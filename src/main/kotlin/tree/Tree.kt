@@ -19,7 +19,7 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
         const val NAME = "Tree"
         const val ID: Short = 2
         const val PORT = 2901
-        const val RECONNECT_TIMEOUT_KEY = "reconnect_timeout"
+        const val RECONNECT_TIMEOUT_KEY = "reconrenect_timeout"
         const val RECONNECT_TIMEOUT_DEFAULT = "3000"
         const val PROPAGATE_TIMEOUT_KEY = "propagate_timeout"
         const val PROPAGATE_TIMEOUT_DEFAULT = "2000"
