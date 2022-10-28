@@ -21,8 +21,7 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         const val NAME = "Manager"
         const val ID: Short = 1
         const val PORT = 2900
-        const val POOL_FILE_KEY = "pool_file"
-        const val POOL_FILE_DEFAULT = "pool.conf"
+        const val POOL_FOLDER_KEY = "pool_folder"
 
         private val logger = LogManager.getLogger()
     }
@@ -30,7 +29,9 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
     private val self: Host
     private val channel: Int
     private val nodePool: MutableList<Host>
-    private val clamp: Int
+
+    private var bootstrap: Boolean
+    private var region: String = ""
 
     init {
         self = Host(address, PORT)
@@ -40,18 +41,37 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         channelProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "true")
         channel = createChannel(TCPChannel.NAME, channelProps)
 
-        val fileName = props.getProperty(POOL_FILE_KEY, POOL_FILE_DEFAULT)
+        val poolFolderName = props.getProperty(POOL_FOLDER_KEY)
 
-        clamp = props.getProperty("pool_file_clamp").toInt()
-
+        bootstrap = false
+        var myFile = false
         nodePool = mutableListOf()
-        File(fileName).forEachLine {
-            val split = it.split(":")
-            val host = Host(InetAddress.getByName(split[0]), split[1].toInt())
-            if (host != self)
-                nodePool.add(host)
+
+        for (file in File(poolFolderName).walk()) {
+            if (file.isFile && file.extension == "pool") {
+                var index = 0
+                file.forEachLine {
+                    val hostTokens = it.split(":")
+                    val host = Host(InetAddress.getByName(hostTokens[0]), hostTokens[1].toInt())
+                    if (host == self) {
+                        myFile = true
+                        region = file.nameWithoutExtension
+                        if (index == 0)
+                            bootstrap = true
+                    } else
+                        nodePool.add(host)
+                    index++
+                }
+                if(myFile)
+                    break
+            }
+            nodePool.clear()
         }
-        logger.info("Loaded node pool: $nodePool")
+
+        if(region.isEmpty())
+            throw IllegalArgumentException("No pool file found for this node")
+
+        logger.info("Region $region, bootstrap $bootstrap, node pool: $nodePool")
 
     }
 
@@ -67,15 +87,14 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
 
         registerRequestHandler(ChildRequest.ID, this::onChildRequest)
 
-        if(props.getProperty("bootstrap").toBoolean()){
+        if (bootstrap)
             triggerNotification(BootstrapNotification(null))
-        }
 
         logger.info("Bind address $self")
     }
 
-    private fun onChildRequest(request: ChildRequest, from: Short){
-        val idx = Random.nextInt(0, clamp-1)
+    private fun onChildRequest(request: ChildRequest, from: Short) {
+        val idx = Random.nextInt(0, nodePool.size)
         openConnection(nodePool[idx])
         sendMessage(WakeMessage(Host(self.address, Tree.PORT)), nodePool[idx])
     }
