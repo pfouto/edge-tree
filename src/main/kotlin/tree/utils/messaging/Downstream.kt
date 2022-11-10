@@ -6,7 +6,7 @@ import pt.unl.fct.di.novasys.network.ISerializer
 import pt.unl.fct.di.novasys.network.data.Host
 import tree.utils.HybridTimestamp
 
-data class DownstreamMetadata(val stableTS: HybridTimestamp, val parents: List<Pair<Host, HybridTimestamp>>) :
+data class Downstream(val stableTS: HybridTimestamp, val parents: List<Pair<Host, HybridTimestamp>>) :
     ProtoMessage(ID) {
 
     companion object {
@@ -14,11 +14,11 @@ data class DownstreamMetadata(val stableTS: HybridTimestamp, val parents: List<P
     }
 
     override fun toString(): String {
-        return "DownstreamMetadata(stableTS=$stableTS, parents=$parents)"
+        return "Downstream(stableTS=$stableTS, parents=$parents)"
     }
 
-    object Serializer : ISerializer<DownstreamMetadata> {
-        override fun serialize(msg: DownstreamMetadata, out: ByteBuf) {
+    object Serializer : ISerializer<Downstream> {
+        override fun serialize(msg: Downstream, out: ByteBuf) {
             HybridTimestamp.Serializer.serialize(msg.stableTS, out)
             out.writeInt(msg.parents.size)
             for (p in msg.parents) {
@@ -27,7 +27,7 @@ data class DownstreamMetadata(val stableTS: HybridTimestamp, val parents: List<P
             }
         }
 
-        override fun deserialize(buff: ByteBuf): DownstreamMetadata {
+        override fun deserialize(buff: ByteBuf): Downstream {
             val ts = HybridTimestamp.Serializer.deserialize(buff)
             val nParents = buff.readInt()
             val parents = mutableListOf<Pair<Host, HybridTimestamp>>()
@@ -36,7 +36,7 @@ data class DownstreamMetadata(val stableTS: HybridTimestamp, val parents: List<P
                 val ts = HybridTimestamp.Serializer.deserialize(buff)
                 parents.add(Pair(host, ts))
             }
-            return DownstreamMetadata(ts, parents)
+            return Downstream(ts, parents)
         }
     }
 

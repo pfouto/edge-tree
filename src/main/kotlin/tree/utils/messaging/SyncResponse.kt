@@ -3,12 +3,9 @@ package tree.utils.messaging
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
-import pt.unl.fct.di.novasys.network.data.Host
-import tree.utils.HybridTimestamp
 
 data class SyncResponse(
-    val stableTS: HybridTimestamp,
-    val parents: List<Pair<Host, HybridTimestamp>>,
+    val downstream: Downstream,
     val data: ByteArray,
 ) : ProtoMessage(ID) {
 
@@ -17,33 +14,39 @@ data class SyncResponse(
     }
 
     override fun toString(): String {
-        return "SyncResponse(stableTS=$stableTS, parents=$parents, data=${data.size})"
+        return "SyncResponse($downstream, data=${data.size})"
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as SyncResponse
+
+        if (downstream != other.downstream) return false
+        if (!data.contentEquals(other.data)) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = downstream.hashCode()
+        result = 31 * result + data.contentHashCode()
+        return result
     }
 
     object Serializer : ISerializer<SyncResponse> {
         override fun serialize(msg: SyncResponse, out: ByteBuf) {
-            HybridTimestamp.Serializer.serialize(msg.stableTS, out)
-            out.writeInt(msg.parents.size)
-            for (p in msg.parents) {
-                Host.serializer.serialize(p.first, out)
-                HybridTimestamp.Serializer.serialize(p.second, out)
-            }
+            Downstream.Serializer.serialize(msg.downstream, out)
             out.writeInt(msg.data.size)
             out.writeBytes(msg.data)
         }
 
         override fun deserialize(buff: ByteBuf): SyncResponse {
-            val ts = HybridTimestamp.Serializer.deserialize(buff)
-            val nParents = buff.readInt()
-            val parents = mutableListOf<Pair<Host, HybridTimestamp>>()
-            for (i in 0 until nParents) {
-                val host = Host.serializer.deserialize(buff)
-                val ts = HybridTimestamp.Serializer.deserialize(buff)
-                parents.add(Pair(host, ts))
-            }
+            val downstream = Downstream.Serializer.deserialize(buff)
             val data = ByteArray(buff.readInt())
             buff.readBytes(data)
-            return SyncResponse(ts, parents, data)
+            return SyncResponse(downstream, data)
         }
     }
 
