@@ -8,7 +8,7 @@ import pt.unl.fct.di.novasys.network.data.Host
 data class WakeMessage(val contact: Host?) : ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 100
+        const val ID: Short = 109
 
         val serializer = object : ISerializer<WakeMessage> {
             override fun serialize(msg: WakeMessage, out: ByteBuf) {

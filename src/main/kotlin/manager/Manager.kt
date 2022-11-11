@@ -19,7 +19,7 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
 
     companion object {
         const val NAME = "Manager"
-        const val ID: Short = 1
+        const val ID: Short = 103
         const val PORT = 2900
         const val POOL_FOLDER_KEY = "pool_folder"
 

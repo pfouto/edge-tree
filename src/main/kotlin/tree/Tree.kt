@@ -17,7 +17,7 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
 
     companion object {
         const val NAME = "Tree"
-        const val ID: Short = 2
+        const val ID: Short = 201
         const val PORT = 2901
         const val RECONNECT_TIMEOUT_KEY = "reconnect_timeout"
         const val RECONNECT_TIMEOUT_DEFAULT = "3000"
@@ -110,14 +110,14 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
         val contact = notification.contact
         when (state) {
             State.DORMANT -> {
-                if (contact != null) {
+                state = if (contact != null) {
                     logger.info("STATE LEAF")
                     treeState.newParent(contact)
-                    state = State.LEAF
+                    State.LEAF
                 } else {
                     logger.info("STATE ROOT")
                     logger.warn("Starting by myself")
-                    state = State.ROOT
+                    State.ROOT
                 }
                 logger.info("Setting up childTimer")
                 setupPeriodicTimer(ChildTimer(), 3000, 3000)
