@@ -10,7 +10,7 @@ data class Downstream(val stableTS: HybridTimestamp, val parents: List<Pair<Host
     ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 203
+        const val ID: Short = 201
     }
 
     override fun toString(): String {

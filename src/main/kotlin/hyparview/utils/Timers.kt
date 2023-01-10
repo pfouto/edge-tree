@@ -1,4 +1,4 @@
-package manager
+package hyparview.utils
 
 import pt.unl.fct.di.novasys.babel.generic.ProtoTimer
 import pt.unl.fct.di.novasys.network.data.Host
@@ -9,7 +9,7 @@ class HelloTimeout : ProtoTimer(TIMER_ID) {
     }
 
     companion object {
-        const val TIMER_ID: Short = 101
+        const val TIMER_ID: Short = 301
     }
 }
 
@@ -26,7 +26,7 @@ class JoinTimeout(val contact: Host) : ProtoTimer(TIMER_ID) {
     }
 
     companion object {
-        const val TIMER_ID: Short = 102
+        const val TIMER_ID: Short = 302
     }
 }
 
@@ -36,6 +36,6 @@ class ShuffleTimeout : ProtoTimer(TIMER_ID) {
     }
 
     companion object {
-        const val TIMER_ID: Short = 103
+        const val TIMER_ID: Short = 303
     }
 }

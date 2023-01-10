@@ -1,4 +1,4 @@
-package manager.messaging
+package hyparview.utils.messaging
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
@@ -19,7 +19,7 @@ class ForwardJoinMessage(var ttl: Short, val newHost: Host) : ProtoMessage(MSG_C
     }
 
     companion object {
-        const val MSG_CODE: Short = 102
+        const val MSG_CODE: Short = 302
         val serializer: ISerializer<ForwardJoinMessage> = object : ISerializer<ForwardJoinMessage> {
             override fun serialize(m: ForwardJoinMessage, out: ByteBuf) {
                 out.writeShort(m.ttl.toInt())

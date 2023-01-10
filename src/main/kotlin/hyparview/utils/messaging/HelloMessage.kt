@@ -1,4 +1,4 @@
-package manager.messaging
+package hyparview.utils.messaging
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
@@ -14,7 +14,7 @@ class HelloMessage(val isPriority: Boolean) : ProtoMessage(MSG_CODE) {
     }
 
     companion object {
-        const val MSG_CODE: Short = 103
+        const val MSG_CODE: Short = 303
 
         val serializer = object : ISerializer<HelloMessage> {
             override fun serialize(m: HelloMessage, out: ByteBuf) {

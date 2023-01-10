@@ -1,10 +1,9 @@
-package manager.messaging
+package hyparview.utils.messaging
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
 import pt.unl.fct.di.novasys.network.data.Host
-import java.io.IOException
 
 
 class ShuffleMessage(self: Host, peers: Collection<Host>, var ttl: Short, val seqnum: Short) :
@@ -18,7 +17,7 @@ class ShuffleMessage(self: Host, peers: Collection<Host>, var ttl: Short, val se
         sample = ArrayList(peers)
     }
 
-    fun getFullSample(): List<Any> {
+    fun getFullSample(): List<Host> {
         val full: MutableList<Host> = ArrayList(sample)
         full.add(origin)
         return full
@@ -42,7 +41,7 @@ class ShuffleMessage(self: Host, peers: Collection<Host>, var ttl: Short, val se
     }
 
     companion object {
-        const val MSG_CODE: Short = 107
+        const val MSG_CODE: Short = 307
         val serializer = object : ISerializer<ShuffleMessage> {
             override fun serialize(msg: ShuffleMessage, out: ByteBuf) {
                 Host.serializer.serialize(msg.origin, out)
@@ -59,7 +58,7 @@ class ShuffleMessage(self: Host, peers: Collection<Host>, var ttl: Short, val se
                 val seqnum = buff.readShort()
                 val ttl = buff.readShort()
                 val size = buff.readShort()
-                val payload: MutableList<Host> = ArrayList<Host>(size.toInt())
+                val payload: MutableList<Host> = ArrayList(size.toInt())
                 for (i in 0 until size) {
                     payload.add(Host.serializer.deserialize(buff))
                 }

@@ -1,4 +1,4 @@
-package tree
+package tree.utils
 
 import pt.unl.fct.di.novasys.babel.generic.ProtoTimer
 import pt.unl.fct.di.novasys.network.data.Host

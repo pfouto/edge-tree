@@ -1,6 +1,6 @@
 package tree
 
-import manager.ChildRequest
+import manager.utils.ChildRequest
 import manager.Manager
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
@@ -8,7 +8,14 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
-import tree.utils.messaging.*
+import tree.utils.messaging.Downstream
+import tree.utils.messaging.SyncRequest
+import tree.utils.messaging.SyncResponse
+import tree.utils.messaging.Upstream
+import tree.utils.BootstrapNotification
+import tree.utils.ChildTimer
+import tree.utils.PropagateTimer
+import tree.utils.ReconnectTimer
 import java.net.Inet4Address
 import java.util.*
 import java.util.function.Consumer
@@ -132,7 +139,7 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
 
     private fun onMessageFailed(msg: ProtoMessage, to: Host, destProto: Short, cause: Throwable, channelId: Int) {
         logger.warn("Message $msg to $to failed: ${cause.localizedMessage}")
-        //TODO redirect to handler?
+        //TODO redirect to handler?r
     }
 
     inner class MessageSenderOut(private val node: Host) : Consumer<ProtoMessage> {

@@ -7,7 +7,7 @@ import tree.utils.HybridTimestamp
 
 data class Upstream(val ts: HybridTimestamp): ProtoMessage(ID) {
     companion object {
-        const val ID: Short = 202
+        const val ID: Short = 204
     }
 
     override fun toString(): String {

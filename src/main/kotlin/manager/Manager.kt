@@ -1,13 +1,14 @@
 package manager
 
-import manager.messaging.WakeMessage
+import manager.utils.ChildRequest
+import manager.utils.messaging.WakeMessage
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
-import tree.BootstrapNotification
+import tree.utils.BootstrapNotification
 import tree.Tree
 import java.io.File
 import java.net.Inet4Address
@@ -19,7 +20,7 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
 
     companion object {
         const val NAME = "Manager"
-        const val ID: Short = 103
+        const val ID: Short = 101
         const val PORT = 2900
         const val POOL_FOLDER_KEY = "pool_folder"
 

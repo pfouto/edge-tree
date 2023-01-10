@@ -1,4 +1,4 @@
-package manager.messaging
+package hyparview.utils.messaging
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
@@ -12,7 +12,7 @@ class DisconnectMessage : ProtoMessage(MSG_CODE) {
     }
 
     companion object {
-        const val MSG_CODE: Short = 101
+        const val MSG_CODE: Short = 301
 
         val serializer = object : ISerializer<DisconnectMessage> {
             override fun serialize(m: DisconnectMessage?, out: ByteBuf) {}

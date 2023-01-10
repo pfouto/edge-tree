@@ -1,4 +1,4 @@
-package manager.utils
+package hyparview.utils
 
 import pt.unl.fct.di.novasys.network.data.Host
 

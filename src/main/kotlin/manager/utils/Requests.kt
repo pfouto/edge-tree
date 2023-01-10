@@ -1,8 +1,8 @@
-package manager
+package manager.utils
 
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 
-class ChildRequest() : ProtoRequest(ID) {
+class ChildRequest : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 101
     }

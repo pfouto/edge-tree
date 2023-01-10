@@ -1,3 +1,4 @@
+import hyparview.HyParView
 import manager.Manager
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
@@ -26,14 +27,20 @@ fun main(args: Array<String>) {
 
         logger.info("Hello I am ${properties.getProperty("hostname")} ${me.hostAddress}")
 
+        val babel = Babel.getInstance()
+
         val tree = Tree(me, properties)
+        val hyParView = HyParView(me, properties)
         val manager = Manager(me, properties)
 
-        val babel = Babel.getInstance()
         babel.registerProtocol(tree)
+        babel.registerProtocol(hyParView)
         babel.registerProtocol(manager)
+
         tree.init(properties)
+        hyParView.init(properties)
         manager.init(properties)
+
         babel.start()
 
         Runtime.getRuntime().addShutdownHook(Thread { logger.info("Goodbye") })

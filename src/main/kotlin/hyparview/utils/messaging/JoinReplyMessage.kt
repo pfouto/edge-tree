@@ -1,4 +1,4 @@
-package manager.messaging
+package hyparview.utils.messaging
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
@@ -11,7 +11,7 @@ class JoinReplyMessage : ProtoMessage(MSG_CODE) {
     }
 
     companion object {
-        const val MSG_CODE: Short = 106
+        const val MSG_CODE: Short = 306
         val serializer = object : ISerializer<JoinReplyMessage> {
             override fun serialize(m: JoinReplyMessage?, out: ByteBuf) {}
 

@@ -1,10 +1,9 @@
-package manager.messaging
+package hyparview.utils.messaging
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
 import pt.unl.fct.di.novasys.network.data.Host
-import java.io.IOException
 
 
 class ShuffleReplyMessage(peers: Collection<Host>, val seqnum: Short) : ProtoMessage(MSG_CODE) {
@@ -27,7 +26,7 @@ class ShuffleReplyMessage(peers: Collection<Host>, val seqnum: Short) : ProtoMes
     }
 
     companion object {
-        const val MSG_CODE: Short = 108
+        const val MSG_CODE: Short = 308
         val serializer = object : ISerializer<ShuffleReplyMessage> {
 
             override fun serialize(msg: ShuffleReplyMessage, out: ByteBuf) {
@@ -41,7 +40,7 @@ class ShuffleReplyMessage(peers: Collection<Host>, val seqnum: Short) : ProtoMes
             override fun deserialize(buff: ByteBuf): ShuffleReplyMessage {
                 val seqnum = buff.readShort()
                 val size = buff.readShort()
-                val payload: MutableList<Host> = ArrayList<Host>(size.toInt())
+                val payload: MutableList<Host> = ArrayList(size.toInt())
                 for (i in 0 until size) {
                     payload.add(Host.serializer.deserialize(buff))
                 }

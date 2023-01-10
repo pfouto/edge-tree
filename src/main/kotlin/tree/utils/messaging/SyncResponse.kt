@@ -10,7 +10,7 @@ data class SyncResponse(
 ) : ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 201
+        const val ID: Short = 203
     }
 
     override fun toString(): String {

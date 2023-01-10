@@ -11,7 +11,7 @@ data class SyncRequest(
 ) : ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 200
+        const val ID: Short = 202
     }
 
     override fun toString(): String {
