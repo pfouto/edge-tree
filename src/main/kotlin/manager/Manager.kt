@@ -1,5 +1,7 @@
 package manager
 
+import hyparview.HyParView
+import hyparview.utils.InitRequest
 import manager.utils.ChildRequest
 import manager.utils.messaging.WakeMessage
 import org.apache.logging.log4j.LogManager
@@ -22,17 +24,23 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         const val NAME = "Manager"
         const val ID: Short = 101
         const val PORT = 2900
-        const val POOL_FOLDER_KEY = "pool_folder"
+        //const val POOL_FOLDER_KEY = "pool_folder"
+        const val DATACENTER_KEY = "datacenter"
+        const val REGION_KEY = "region"
 
         private val logger = LogManager.getLogger()
     }
 
     private val self: Host
     private val channel: Int
-    private val nodePool: MutableList<Host>
 
-    private var bootstrap: Boolean
-    private var region: String = ""
+    private val region: String
+    private val regionalDatacenter: String
+    private val amDatacenter: Boolean
+
+    //private val nodePool: MutableList<Host>
+    //private var bootstrap: Boolean
+
 
     init {
         self = Host(address, PORT)
@@ -42,7 +50,13 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         channelProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "true")
         channel = createChannel(TCPChannel.NAME, channelProps)
 
-        val poolFolderName = props.getProperty(POOL_FOLDER_KEY)
+        region = props.getProperty(REGION_KEY)
+        regionalDatacenter = props.getProperty(DATACENTER_KEY)
+        amDatacenter = regionalDatacenter == props.getProperty("hostname")
+
+        logger.info("Region $region, amDc $amDatacenter, regionalDc: $regionalDatacenter")
+
+        /*val poolFolderName = props.getProperty(POOL_FOLDER_KEY)
 
         bootstrap = false
         var myFile = false
@@ -72,7 +86,7 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         if(region.isEmpty())
             throw IllegalArgumentException("No pool file found for this node")
 
-        logger.info("Region $region, bootstrap $bootstrap, node pool: $nodePool")
+        logger.info("Region $region, bootstrap $bootstrap, node pool: $nodePool")*/
 
     }
 
@@ -88,16 +102,18 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
 
         registerRequestHandler(ChildRequest.ID, this::onChildRequest)
 
-        if (bootstrap)
+        if (amDatacenter)
             triggerNotification(BootstrapNotification(null))
+        else
+            sendRequest(InitRequest(Inet4Address.getByName(regionalDatacenter) as Inet4Address), HyParView.ID)
 
         logger.info("Bind address $self")
     }
 
     private fun onChildRequest(request: ChildRequest, from: Short) {
-        val idx = Random.nextInt(0, nodePool.size)
-        openConnection(nodePool[idx])
-        sendMessage(WakeMessage(Host(self.address, Tree.PORT)), nodePool[idx])
+        //val idx = Random.nextInt(0, nodePool.size)
+        //openConnection(nodePool[idx])
+        //sendMessage(WakeMessage(Host(self.address, Tree.PORT)), nodePool[idx])
     }
 
     private fun onWakeMessage(msg: WakeMessage, from: Host, sourceProto: Short, channelId: Int) {

@@ -45,7 +45,7 @@ fun main(args: Array<String>) {
 
         Runtime.getRuntime().addShutdownHook(Thread { logger.info("Goodbye") })
     } catch (e: Exception) {
-        logger.error(e)
+        logger.error("Exception caught in main: ${e.localizedMessage}", e)
     }
 
 }

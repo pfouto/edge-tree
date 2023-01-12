@@ -8,9 +8,8 @@ import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
 import java.net.Inet4Address
-import java.net.InetAddress
 import java.util.*
-import kotlin.system.exitProcess
+import kotlin.math.min
 
 
 class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol(NAME, ID) {
@@ -51,7 +50,7 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
         PRWL = properties.getProperty("PRWL", "2").toShort()
 
         shuffleTime = properties.getProperty("shuffleTime", "2000").toShort()
-        timeout  = properties.getProperty("helloBackoff", "1000").toShort()
+        timeout = properties.getProperty("helloBackoff", "1000").toShort()
         originalTimeout = timeout
 
         joinTimeout = properties.getProperty("joinTimeout", "2000").toShort()
@@ -71,8 +70,8 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
         passive.setOther(active, pending)
 
         val channelProps = Properties()
-        channelProps.setProperty(TCPChannel.ADDRESS_KEY, properties.getProperty("address")) // The address to bind to
-        channelProps.setProperty(TCPChannel.PORT_KEY, properties.getProperty("port")) // The port to bind to
+        channelProps.setProperty(TCPChannel.ADDRESS_KEY, myself.address.hostAddress)
+        channelProps.setProperty(TCPChannel.PORT_KEY, myself.port.toString())
         channelProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "true")
         val channelId = createChannel(TCPChannel.NAME, channelProps)
 
@@ -87,14 +86,24 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
         registerMessageSerializer(channelId, ShuffleReplyMessage.MSG_CODE, ShuffleReplyMessage.serializer)
 
         /*---------------------- Register Message Handlers -------------------------- */
-        registerMessageHandler(channelId, JoinMessage.MSG_CODE,this::uponReceiveJoin)
+        registerMessageHandler(channelId, JoinMessage.MSG_CODE, this::uponReceiveJoin)
         registerMessageHandler(channelId, JoinReplyMessage.MSG_CODE, this::uponReceiveJoinReply)
         registerMessageHandler(channelId, ForwardJoinMessage.MSG_CODE, this::uponReceiveForwardJoin)
         registerMessageHandler(channelId, HelloMessage.MSG_CODE, this::uponReceiveHello)
         registerMessageHandler(channelId, HelloReplyMessage.MSG_CODE, this::uponReceiveHelloReply)
-        registerMessageHandler(channelId, DisconnectMessage.MSG_CODE, this::uponReceiveDisconnect, this::uponDisconnectSent)
+        registerMessageHandler(
+            channelId,
+            DisconnectMessage.MSG_CODE,
+            this::uponReceiveDisconnect,
+            this::uponDisconnectSent
+        )
         registerMessageHandler(channelId, ShuffleMessage.MSG_CODE, this::uponReceiveShuffle)
-        registerMessageHandler(channelId, ShuffleReplyMessage.MSG_CODE, this::uponReceiveShuffleReply, this::uponShuffleReplySent)
+        registerMessageHandler(
+            channelId,
+            ShuffleReplyMessage.MSG_CODE,
+            this::uponReceiveShuffleReply,
+            this::uponShuffleReplySent
+        )
 
         /*--------------------- Register Timer Handlers ----------------------------- */
         registerTimerHandler(ShuffleTimeout.TIMER_ID, this::uponShuffleTimeout)
@@ -107,7 +116,27 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
         registerChannelEventHandler(channelId, OutConnectionUp.EVENT_ID, this::uponOutConnectionUp)
         registerChannelEventHandler(channelId, InConnectionUp.EVENT_ID, this::uponInConnectionUp)
         registerChannelEventHandler(channelId, InConnectionDown.EVENT_ID, this::uponInConnectionDown)
+
+        registerRequestHandler(InitRequest.ID) { req: InitRequest, _ -> onInitRequest(req)}
+
     }
+
+    private fun onInitRequest(request: InitRequest) {
+        val contactHost = Host(request.address, PORT)
+        logger.debug("Initializing, contact: $contactHost")
+        openConnection(contactHost)
+        val m = JoinMessage()
+        sendMessage(m, contactHost)
+        logger.debug("Sent JoinMessage to {}", contactHost)
+        logger.trace("Sent $m to $contactHost")
+
+        setupTimer(JoinTimeout(contactHost), joinTimeout.toLong())
+        setupPeriodicTimer(ShuffleTimeout(), shuffleTime.toLong(), shuffleTime.toLong())
+    }
+
+    override fun init(props: Properties) {
+    }
+
 
     private fun handleDropFromActive(dropped: Host?) {
         if (dropped != null) {
@@ -312,18 +341,21 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
             logger.debug("Sent ShuffleMessage to {}", h)
             seqNum = ((seqNum % Short.MAX_VALUE).toShort() + 1).toShort()
         }
+        logger.info("Active: {}, Passive: {}", active, passive)
     }
-    
+
     private fun uponHelloTimeout(timer: HelloTimeout, timerId: Long) {
         if (!active.fullWithPending(pending)) {
             val h = passive.dropRandom()
             if (h != null && pending.add(h)) {
                 openConnection(h)
-                logger.trace("Sending HelloMessage to {}, pending {}, active {}, passive {}",
-                    h, pending, active, passive)
+                logger.trace(
+                    "Sending HelloMessage to {}, pending {}, active {}, passive {}",
+                    h, pending, active, passive
+                )
                 sendMessage(HelloMessage(getPriority()), h)
                 logger.debug("Sent HelloMessage to {}", h)
-                timeout = Math.min(timeout * 2, MAX_BACKOFF).toShort()
+                timeout = min(timeout * 2, MAX_BACKOFF).toShort()
             } else if (h != null) passive.addPeer(h)
         }
     }
@@ -390,33 +422,4 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
     private fun uponInConnectionDown(event: InConnectionDown, channelId: Int) {
         logger.trace("Connection from host {} is down, active{}, cause: {}", event.node, active, event.cause)
     }
-
-    override fun init(props: Properties) {
-        //TODO move this to request from manager
-        if (props.containsKey("contact")) {
-            try {
-                logger.debug("Trying to reach contact node")
-                val contact = props.getProperty("contact")
-                val hostElems = contact.split(":".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-                val contactHost = Host(
-                    InetAddress.getByName(hostElems[0]),
-                    hostElems[1].toShort().toInt()
-                )
-                openConnection(contactHost)
-                val m = JoinMessage()
-                sendMessage(m, contactHost)
-                logger.debug("Sent JoinMessage to {}", contactHost)
-                logger.trace("Sent $m to $contactHost")
-                setupTimer(JoinTimeout(contactHost), joinTimeout.toLong())
-            } catch (e: Exception) {
-                logger.error("Invalid contact on configuration: '" + props.getProperty("contact"), e)
-                exitProcess(-1)
-            }
-        } else {
-            logger.debug("No contact node provided")
-        }
-
-        setupPeriodicTimer(ShuffleTimeout(), shuffleTime.toLong(), shuffleTime.toLong())
-    }
-
 }
