@@ -16,7 +16,7 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
     companion object {
         const val NAME = "HyParView"
         const val ID: Short = 301
-        const val PORT = 2900
+        const val PORT = 2902
 
         const val MAX_BACKOFF: Int = 60000
         private val logger = LogManager.getLogger()
@@ -60,8 +60,8 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
         rnd = Random()
         val maxActive: Int = properties.getProperty("ActiveView", "4").toInt()
         val maxPassive: Int = properties.getProperty("PassiveView", "7").toInt()
-        active = View(true, maxActive, myself, rnd)
-        passive = View(false, maxPassive, myself, rnd)
+        active = View("Active", maxActive, myself, rnd)
+        passive = View("Passive", maxPassive, myself, rnd)
 
         pending = HashSet()
         activeShuffles = TreeMap()
@@ -119,18 +119,24 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
 
         registerRequestHandler(InitRequest.ID) { req: InitRequest, _ -> onInitRequest(req)}
 
+        logger.info("Bind address $myself")
+
     }
 
     private fun onInitRequest(request: InitRequest) {
-        val contactHost = Host(request.address, PORT)
-        logger.debug("Initializing, contact: $contactHost")
-        openConnection(contactHost)
-        val m = JoinMessage()
-        sendMessage(m, contactHost)
-        logger.debug("Sent JoinMessage to {}", contactHost)
-        logger.trace("Sent $m to $contactHost")
+        if(request.address != null) {
+            val contactHost = Host(request.address, PORT)
+            logger.info("Initializing, contact: $contactHost")
+            openConnection(contactHost)
+            val m = JoinMessage()
+            sendMessage(m, contactHost)
+            logger.debug("Sent JoinMessage to {}", contactHost)
+            logger.trace("Sent $m to $contactHost")
 
-        setupTimer(JoinTimeout(contactHost), joinTimeout.toLong())
+            setupTimer(JoinTimeout(contactHost), joinTimeout.toLong())
+        } else
+            logger.info("Initializing, no contact")
+
         setupPeriodicTimer(ShuffleTimeout(), shuffleTime.toLong(), shuffleTime.toLong())
     }
 
@@ -341,7 +347,6 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
             logger.debug("Sent ShuffleMessage to {}", h)
             seqNum = ((seqNum % Short.MAX_VALUE).toShort() + 1).toShort()
         }
-        logger.info("Active: {}, Passive: {}", active, passive)
     }
 
     private fun uponHelloTimeout(timer: HelloTimeout, timerId: Long) {

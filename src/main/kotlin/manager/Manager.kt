@@ -1,7 +1,10 @@
 package manager
 
 import hyparview.HyParView
+import hyparview.utils.BroadcastReply
 import hyparview.utils.InitRequest
+import manager.utils.BroadcastState
+import manager.utils.BroadcastTimer
 import manager.utils.ChildRequest
 import manager.utils.messaging.WakeMessage
 import org.apache.logging.log4j.LogManager
@@ -11,12 +14,8 @@ import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
 import tree.utils.BootstrapNotification
-import tree.Tree
-import java.io.File
 import java.net.Inet4Address
-import java.net.InetAddress
 import java.util.*
-import kotlin.random.Random
 
 class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID) {
 
@@ -24,7 +23,7 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         const val NAME = "Manager"
         const val ID: Short = 101
         const val PORT = 2900
-        //const val POOL_FOLDER_KEY = "pool_folder"
+
         const val DATACENTER_KEY = "datacenter"
         const val REGION_KEY = "region"
 
@@ -38,9 +37,7 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
     private val regionalDatacenter: String
     private val amDatacenter: Boolean
 
-    //private val nodePool: MutableList<Host>
-    //private var bootstrap: Boolean
-
+    private val membership: MutableMap<Host, BroadcastState>
 
     init {
         self = Host(address, PORT)
@@ -50,47 +47,6 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         channelProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "true")
         channel = createChannel(TCPChannel.NAME, channelProps)
 
-        region = props.getProperty(REGION_KEY)
-        regionalDatacenter = props.getProperty(DATACENTER_KEY)
-        amDatacenter = regionalDatacenter == props.getProperty("hostname")
-
-        logger.info("Region $region, amDc $amDatacenter, regionalDc: $regionalDatacenter")
-
-        /*val poolFolderName = props.getProperty(POOL_FOLDER_KEY)
-
-        bootstrap = false
-        var myFile = false
-        nodePool = mutableListOf()
-
-        for (file in File(poolFolderName).walk()) {
-            if (file.isFile && file.extension == "pool") {
-                var index = 0
-                file.forEachLine {
-                    val hostTokens = it.split(":")
-                    val host = Host(InetAddress.getByName(hostTokens[0]), hostTokens[1].toInt())
-                    if (host == self) {
-                        myFile = true
-                        region = file.nameWithoutExtension
-                        if (index == 0)
-                            bootstrap = true
-                    } else
-                        nodePool.add(host)
-                    index++
-                }
-                if(myFile)
-                    break
-            }
-            nodePool.clear()
-        }
-
-        if(region.isEmpty())
-            throw IllegalArgumentException("No pool file found for this node")
-
-        logger.info("Region $region, bootstrap $bootstrap, node pool: $nodePool")*/
-
-    }
-
-    override fun init(props: Properties) {
         registerMessageSerializer(channel, WakeMessage.ID, WakeMessage.serializer)
         registerMessageHandler(channel, WakeMessage.ID, this::onWakeMessage, this::onWakeSent, this::onMessageFailed)
 
@@ -101,14 +57,38 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         registerChannelEventHandler(channel, InConnectionUp.EVENT_ID, this::onInConnectionUp)
 
         registerRequestHandler(ChildRequest.ID, this::onChildRequest)
+        registerReplyHandler(BroadcastReply.ID, this::onBroadcastReply)
 
-        if (amDatacenter)
+        registerTimerHandler(BroadcastTimer.TIMER_ID, this::onBroadcastTimer)
+
+        region = props.getProperty(REGION_KEY)
+        regionalDatacenter = props.getProperty(DATACENTER_KEY)
+        amDatacenter = regionalDatacenter == props.getProperty("hostname")
+
+        membership = mutableMapOf()
+
+        logger.info("Region $region, amDc $amDatacenter, regionalDc: $regionalDatacenter")
+    }
+
+    override fun init(props: Properties) {
+
+        if (amDatacenter) {
             triggerNotification(BootstrapNotification(null))
-        else
+            sendRequest(InitRequest(null), HyParView.ID)
+        } else
             sendRequest(InitRequest(Inet4Address.getByName(regionalDatacenter) as Inet4Address), HyParView.ID)
 
         logger.info("Bind address $self")
     }
+
+    private fun onBroadcastTimer(timer: BroadcastTimer, timerId: Long) {
+
+    }
+
+    private fun onBroadcastReply(reply: BroadcastReply, from: Short) {
+
+    }
+
 
     private fun onChildRequest(request: ChildRequest, from: Short) {
         //val idx = Random.nextInt(0, nodePool.size)

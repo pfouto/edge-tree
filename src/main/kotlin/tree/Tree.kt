@@ -126,7 +126,7 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
                     logger.warn("Starting by myself")
                     State.ROOT
                 }
-                logger.info("Setting up childTimer")
+                //logger.info("Setting up childTimer")
                 setupPeriodicTimer(ChildTimer(), 3000, 3000)
                 setupPeriodicTimer(PropagateTimer(), propagateTimeout, propagateTimeout)
             }

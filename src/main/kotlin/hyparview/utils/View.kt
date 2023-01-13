@@ -5,30 +5,21 @@ import pt.unl.fct.di.novasys.network.data.Host
 import java.util.*
 
 
-class View(isActive: Boolean, capacity: Int, self: Host, rnd: Random): IView {
+class View(
+    private val name: String,
+    private val capacity: Int,
+    private val self: Host,
+    private val rnd: Random,
+) : IView {
 
     companion object {
         private val logger = LogManager.getLogger()
     }
 
-    private val capacity: Int
-    private val peers: MutableSet<Host>
-
-    private val rnd: Random
-    private val self: Host
-
-    private var isActive: Boolean
+    private val peers: MutableSet<Host> = mutableSetOf()
 
     private lateinit var other: IView
     private lateinit var pending: Set<Host>
-
-    init{
-        this.capacity = capacity
-        this.self = self
-        this.peers = mutableSetOf()
-        this.rnd = rnd
-        this.isActive = isActive
-    }
 
     override fun setOther(other: IView, pending: Set<Host>) {
         this.other = other
@@ -36,9 +27,7 @@ class View(isActive: Boolean, capacity: Int, self: Host, rnd: Random): IView {
     }
 
     override fun toString(): String {
-        return "View{" +
-                "peers=" + peers +
-                '}'
+        return peers.toString()
     }
 
     override fun addPeer(peer: Host): Host? {
@@ -46,7 +35,7 @@ class View(isActive: Boolean, capacity: Int, self: Host, rnd: Random): IView {
             var excess: Host? = null
             if (peers.size == capacity) excess = dropRandom()
             peers.add(peer)
-            logger.debug("Added {} {} {}", peer, isActive, peers)
+            logger.info("{} Added {} {}", name.uppercase(), peer.address.hostAddress, peers)
             return excess
         }
         return null
@@ -54,7 +43,8 @@ class View(isActive: Boolean, capacity: Int, self: Host, rnd: Random): IView {
 
     override fun removePeer(peer: Host): Boolean {
         val removed = peers.remove(peer)
-        if (removed) logger.debug("Removed {} {} {}", peer, isActive, peers)
+        if (removed)
+            logger.info("{} Removed {} {}", name.uppercase(), peer.address.hostAddress, peers)
         return removed
     }
 
@@ -69,7 +59,7 @@ class View(isActive: Boolean, capacity: Int, self: Host, rnd: Random): IView {
             val hosts = peers.toTypedArray()
             torm = hosts[idx]
             peers.remove(torm)
-            logger.debug("Removed {} {} {}", torm, isActive, peers)
+            logger.info("{} Removed {} {}", name.uppercase(), torm.address.hostAddress, peers)
         }
         return torm
     }
