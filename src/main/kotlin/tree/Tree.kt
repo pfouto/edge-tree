@@ -1,7 +1,5 @@
 package tree
 
-import manager.utils.ChildRequest
-import manager.Manager
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
@@ -13,7 +11,6 @@ import tree.utils.messaging.SyncRequest
 import tree.utils.messaging.SyncResponse
 import tree.utils.messaging.Upstream
 import tree.utils.BootstrapNotification
-import tree.utils.ChildTimer
 import tree.utils.PropagateTimer
 import tree.utils.ReconnectTimer
 import java.net.Inet4Address
@@ -34,16 +31,13 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
         private val logger = LogManager.getLogger()
     }
 
-    enum class State {
-        DORMANT, LEAF, ROOT
-    }
-
-    private var state: State = State.DORMANT
     private val treeState: TreeState
 
     private val reconnectTimeout: Long
     private val propagateTimeout: Long
     private val self: Host
+
+    private var bootstrapped: Boolean = false
 
     private val channel: Int
 
@@ -106,7 +100,6 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
         )
 
         registerTimerHandler(ReconnectTimer.ID) { timer: ReconnectTimer, _ -> openConnection(timer.node) }
-        registerTimerHandler(ChildTimer.ID) { _: ChildTimer, _ -> sendRequest(ChildRequest(), Manager.ID) }
         registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> treeState.propagateTime() }
 
         logger.info("Bind address $self")
@@ -114,27 +107,20 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
 
     private fun onBootstrapNot(notification: BootstrapNotification, emmiter: Short) {
         logger.info("$notification received")
-        val contact = notification.contact
-        when (state) {
-            State.DORMANT -> {
-                state = if (contact != null) {
-                    logger.info("STATE LEAF")
-                    treeState.newParent(contact)
-                    State.LEAF
-                } else {
-                    logger.info("STATE ROOT")
-                    logger.warn("Starting by myself")
-                    State.ROOT
-                }
-                //logger.info("Setting up childTimer")
-                setupPeriodicTimer(ChildTimer(), 3000, 3000)
-                setupPeriodicTimer(PropagateTimer(), propagateTimeout, propagateTimeout)
-            }
 
-            State.ROOT -> logger.warn("Am already a root, ignoring")
-
-            State.LEAF -> logger.warn("Am already a leaf, ignoring")
+        if (bootstrapped) {
+            logger.warn("Already bootstrapped, ignoring")
+            return
         }
+
+        val contact = notification.contact
+        if (contact != null) {
+            treeState.newParent(contact)
+        }
+        //logger.info("Setting up childTimer")
+        setupPeriodicTimer(PropagateTimer(), propagateTimeout, propagateTimeout)
+
+        bootstrapped = true
     }
 
     private fun onMessageFailed(msg: ProtoMessage, to: Host, destProto: Short, cause: Throwable, channelId: Int) {

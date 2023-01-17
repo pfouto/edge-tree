@@ -1,4 +1,4 @@
-package hyparview.utils
+package hyparflood.utils
 
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.network.data.Host
@@ -35,7 +35,7 @@ class View(
             var excess: Host? = null
             if (peers.size == capacity) excess = dropRandom()
             peers.add(peer)
-            logger.info("{} Added {} {}", name.uppercase(), peer.address.hostAddress, peers)
+            logger.info("{} Added {}", name.uppercase(), peer.address.hostAddress)
             return excess
         }
         return null
@@ -44,7 +44,7 @@ class View(
     override fun removePeer(peer: Host): Boolean {
         val removed = peers.remove(peer)
         if (removed)
-            logger.info("{} Removed {} {}", name.uppercase(), peer.address.hostAddress, peers)
+            logger.info("{} Removed {}", name.uppercase(), peer.address.hostAddress)
         return removed
     }
 
@@ -59,7 +59,7 @@ class View(
             val hosts = peers.toTypedArray()
             torm = hosts[idx]
             peers.remove(torm)
-            logger.info("{} Removed {} {}", name.uppercase(), torm.address.hostAddress, peers)
+            logger.info("{} Removed {}", name.uppercase(), torm.address.hostAddress)
         }
         return torm
     }

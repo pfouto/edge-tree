@@ -1,5 +1,6 @@
-package hyparview.utils
+package hyparflood.utils
 
+import manager.utils.BroadcastState
 import pt.unl.fct.di.novasys.babel.generic.ProtoReply
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 import java.net.Inet4Address
@@ -14,6 +15,9 @@ class BroadcastRequest(val payload: ByteArray) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 302
     }
+
+    constructor(broadcastState: BroadcastState) :
+            this(broadcastState.toByteArray())
 }
 
 class BroadcastReply(val payload: ByteArray) : ProtoReply(ID) {

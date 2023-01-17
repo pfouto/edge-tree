@@ -1,7 +1,8 @@
-package hyparview
+package hyparflood
 
-import hyparview.utils.*
-import hyparview.utils.messaging.*
+import hyparflood.utils.*
+import hyparflood.utils.messaging.*
+import manager.Manager
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
@@ -12,9 +13,9 @@ import java.util.*
 import kotlin.math.min
 
 
-class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol(NAME, ID) {
+class HyParFlood(address: Inet4Address, properties: Properties) : GenericProtocol(NAME, ID) {
     companion object {
-        const val NAME = "HyParView"
+        const val NAME = "HyParFlood"
         const val ID: Short = 301
         const val PORT = 2902
 
@@ -42,6 +43,9 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
     private var seqNum: Short = 0
 
     private val rnd: Random
+
+    private val highestBroadcastPerHost: MutableMap<Host, Int> = mutableMapOf()
+    private var mySeqNumber: Int = 0
 
     init {
         myself = Host(address, PORT)
@@ -84,6 +88,7 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
         registerMessageSerializer(channelId, DisconnectMessage.MSG_CODE, DisconnectMessage.serializer)
         registerMessageSerializer(channelId, ShuffleMessage.MSG_CODE, ShuffleMessage.serializer)
         registerMessageSerializer(channelId, ShuffleReplyMessage.MSG_CODE, ShuffleReplyMessage.serializer)
+        registerMessageSerializer(channelId, BroadcastMessage.MSG_CODE, BroadcastMessage.serializer)
 
         /*---------------------- Register Message Handlers -------------------------- */
         registerMessageHandler(channelId, JoinMessage.MSG_CODE, this::uponReceiveJoin)
@@ -105,6 +110,9 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
             this::uponShuffleReplySent
         )
 
+        registerMessageHandler(channelId, BroadcastMessage.MSG_CODE, this::uponReceiveBroadcast)
+
+
         /*--------------------- Register Timer Handlers ----------------------------- */
         registerTimerHandler(ShuffleTimeout.TIMER_ID, this::uponShuffleTimeout)
         registerTimerHandler(HelloTimeout.TIMER_ID, this::uponHelloTimeout)
@@ -117,14 +125,15 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
         registerChannelEventHandler(channelId, InConnectionUp.EVENT_ID, this::uponInConnectionUp)
         registerChannelEventHandler(channelId, InConnectionDown.EVENT_ID, this::uponInConnectionDown)
 
-        registerRequestHandler(InitRequest.ID) { req: InitRequest, _ -> onInitRequest(req)}
+        registerRequestHandler(InitRequest.ID) { req: InitRequest, _ -> onInitRequest(req) }
+        registerRequestHandler(BroadcastRequest.ID) { req: BroadcastRequest, _ -> onBroadcastRequest(req) }
 
         logger.info("Bind address $myself")
 
     }
 
     private fun onInitRequest(request: InitRequest) {
-        if(request.address != null) {
+        if (request.address != null) {
             val contactHost = Host(request.address, PORT)
             logger.info("Initializing, contact: $contactHost")
             openConnection(contactHost)
@@ -141,6 +150,23 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
     }
 
     override fun init(props: Properties) {
+    }
+
+    private fun onBroadcastRequest(request: BroadcastRequest) {
+        val msg = BroadcastMessage(myself, mySeqNumber++, request.payload)
+        active.getPeers().forEach { sendMessage(msg, it) }
+    }
+
+    private fun uponReceiveBroadcast(msg: BroadcastMessage, from: Host, sourceProto: Short, channelId: Int) {
+        logger.debug("Received {} from {}", msg, from)
+        if(msg.origin == myself) return
+
+        val highestSeq = highestBroadcastPerHost[msg.origin]
+        if (highestSeq == null || msg.seqNumber > highestSeq) {
+            highestBroadcastPerHost[msg.origin] = msg.seqNumber
+            sendReply(BroadcastReply(msg.payload), Manager.ID)
+            active.getPeers().filter { it != from }.forEach { sendMessage(msg, it) }
+        }
     }
 
 
@@ -397,7 +423,7 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
     /* --------------------------------- Channel Events ---------------------------- */
 
     private fun uponOutConnectionDown(event: OutConnectionDown, channelId: Int) {
-        logger.debug("Host {} is down, active{}, cause: {}", event.node, active, event.cause)
+        logger.info("Host {} is down, active{}, cause: {}", event.node, active, event.cause)
         if (active.removePeer(event.node)) {
             triggerNotification(NeighbourDown(event.node))
             if (!active.fullWithPending(pending)) {
@@ -407,7 +433,7 @@ class HyParView(address: Inet4Address, properties: Properties) : GenericProtocol
     }
 
     private fun uponOutConnectionFailed(event: OutConnectionFailed<*>, channelId: Int) {
-        logger.trace("Connection to host {} failed, cause: {}", event.node, event.cause)
+        logger.info("Connection to host {} failed, cause: {}", event.node, event.cause)
         if (active.removePeer(event.node)) {
             triggerNotification(NeighbourDown(event.node))
             if (!active.fullWithPending(pending)) {

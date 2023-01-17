@@ -1,11 +1,13 @@
 package manager
 
-import hyparview.HyParView
-import hyparview.utils.BroadcastReply
-import hyparview.utils.InitRequest
+import getTimeMillis
+import hyparflood.HyParFlood
+import hyparflood.utils.BroadcastReply
+import hyparflood.utils.BroadcastRequest
+import hyparflood.utils.InitRequest
 import manager.utils.BroadcastState
 import manager.utils.BroadcastTimer
-import manager.utils.ChildRequest
+import manager.utils.ChildTimer
 import manager.utils.messaging.WakeMessage
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
@@ -13,6 +15,7 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
+import tree.Tree
 import tree.utils.BootstrapNotification
 import java.net.Inet4Address
 import java.util.*
@@ -26,9 +29,17 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
 
         const val DATACENTER_KEY = "datacenter"
         const val REGION_KEY = "region"
+        const val BROADCAST_INTERVAL_KEY = "broadcast_interval"
+        const val BROADCAST_INTERVAL_DEFAULT = "2000"
 
         private val logger = LogManager.getLogger()
     }
+
+    enum class State {
+        DORMANT, LEAF, ROOT
+    }
+
+    private var state: State = State.DORMANT
 
     private val self: Host
     private val channel: Int
@@ -37,7 +48,13 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
     private val regionalDatacenter: String
     private val amDatacenter: Boolean
 
-    private val membership: MutableMap<Host, BroadcastState>
+    private val location: Pair<Int, Int> = Pair(0, 0)
+    private val resources: Int = 0
+
+    private val membership: MutableMap<Host, Pair<BroadcastState, Long>>
+
+    private val broadcastInterval: Long
+    private val membershipExpiration: Long
 
     init {
         self = Host(address, PORT)
@@ -56,14 +73,17 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         registerChannelEventHandler(channel, OutConnectionUp.EVENT_ID, this::onOutConnectionUp)
         registerChannelEventHandler(channel, InConnectionUp.EVENT_ID, this::onInConnectionUp)
 
-        registerRequestHandler(ChildRequest.ID, this::onChildRequest)
         registerReplyHandler(BroadcastReply.ID, this::onBroadcastReply)
 
         registerTimerHandler(BroadcastTimer.TIMER_ID, this::onBroadcastTimer)
+        registerTimerHandler(ChildTimer.ID, this::onChildTimer)
 
         region = props.getProperty(REGION_KEY)
         regionalDatacenter = props.getProperty(DATACENTER_KEY)
         amDatacenter = regionalDatacenter == props.getProperty("hostname")
+
+        broadcastInterval = props.getProperty(BROADCAST_INTERVAL_KEY, BROADCAST_INTERVAL_DEFAULT).toLong()
+        membershipExpiration = broadcastInterval * 3
 
         membership = mutableMapOf()
 
@@ -73,32 +93,70 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
     override fun init(props: Properties) {
 
         if (amDatacenter) {
+            state = State.ROOT
+            logger.info("STATE ROOT")
+            logger.warn("Starting as datacenter")
             triggerNotification(BootstrapNotification(null))
-            sendRequest(InitRequest(null), HyParView.ID)
-        } else
-            sendRequest(InitRequest(Inet4Address.getByName(regionalDatacenter) as Inet4Address), HyParView.ID)
-
+            sendRequest(InitRequest(null), HyParFlood.ID)
+        } else {
+            logger.warn("Starting asleep")
+            sendRequest(InitRequest(Inet4Address.getByName(regionalDatacenter) as Inet4Address), HyParFlood.ID)
+        }
         logger.info("Bind address $self")
+
+        setupPeriodicTimer(BroadcastTimer(), 0, broadcastInterval)
+        setupPeriodicTimer(ChildTimer(), 10000, 10000)
+
     }
 
     private fun onBroadcastTimer(timer: BroadcastTimer, timerId: Long) {
-
+        sendRequest(BroadcastRequest(BroadcastState(self, location, resources, state != State.DORMANT)), HyParFlood.ID)
+        val time = getTimeMillis()
+        membership.filterValues { it.second < time }.forEach {
+            membership.remove(it.key)
+            logger.info("MEMBERSHIP remove ${it.key}")
+        }
     }
 
     private fun onBroadcastReply(reply: BroadcastReply, from: Short) {
+        val newState = BroadcastState.fromByteArray(reply.payload)
+        val newExpiry = getTimeMillis() + membershipExpiration
 
+        val existingPair = membership[newState.host]
+
+        membership[newState.host] = Pair(newState, newExpiry)
+        if (existingPair == null || newState != existingPair.first) {
+            logger.info("MEMBERSHIP update $newState $newExpiry")
+        }
     }
 
 
-    private fun onChildRequest(request: ChildRequest, from: Short) {
-        //val idx = Random.nextInt(0, nodePool.size)
-        //openConnection(nodePool[idx])
-        //sendMessage(WakeMessage(Host(self.address, Tree.PORT)), nodePool[idx])
+    private fun onChildTimer(timer: ChildTimer, timerId: Long) {
+        if (state == State.DORMANT)
+            return
+
+        val sortedFilter = membership.filterValues { !it.first.active }.toSortedMap(compareBy { it.address.hostAddress })
+        if(!sortedFilter.isEmpty()){
+            val toWake = sortedFilter.keys.first()
+            logger.info("Waking up $toWake")
+            openConnection(toWake)
+            sendMessage(WakeMessage(Host(self.address, Tree.PORT)), toWake)
+        }
     }
 
     private fun onWakeMessage(msg: WakeMessage, from: Host, sourceProto: Short, channelId: Int) {
         logger.info("$msg FROM $from. Sending to tree")
-        triggerNotification(BootstrapNotification(msg.contact))
+        if (state == State.DORMANT) {
+            triggerNotification(BootstrapNotification(msg.contact))
+            state = State.LEAF
+            logger.info("STATE LEAF")
+            sendRequest(
+                BroadcastRequest(BroadcastState(self, location, resources, state != State.DORMANT)),
+                HyParFlood.ID
+            )
+        } else {
+            logger.warn("Received wake message while not dormant, ignoring")
+        }
     }
 
     private fun onWakeSent(msg: WakeMessage, host: Host, destProto: Short, channelId: Int) {

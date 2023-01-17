@@ -1,4 +1,4 @@
-import hyparview.HyParView
+import hyparflood.HyParFlood
 import manager.Manager
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
@@ -30,15 +30,15 @@ fun main(args: Array<String>) {
         val babel = Babel.getInstance()
 
         val tree = Tree(me, properties)
-        val hyParView = HyParView(me, properties)
+        val hyParFlood = HyParFlood(me, properties)
         val manager = Manager(me, properties)
 
         babel.registerProtocol(tree)
-        babel.registerProtocol(hyParView)
+        babel.registerProtocol(hyParFlood)
         babel.registerProtocol(manager)
 
         tree.init(properties)
-        hyParView.init(properties)
+        hyParFlood.init(properties)
         manager.init(properties)
 
         babel.start()

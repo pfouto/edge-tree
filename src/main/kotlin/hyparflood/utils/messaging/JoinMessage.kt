@@ -1,4 +1,4 @@
-package hyparview.utils.messaging
+package hyparflood.utils.messaging
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage

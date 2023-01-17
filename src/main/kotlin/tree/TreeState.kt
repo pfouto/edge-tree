@@ -66,7 +66,7 @@ class TreeState(private val connector: Tree.Connector) {
         msg.parents.forEach { (parent, _) -> ready.backups.add(parent) }
     }
 
-    fun parentConnectionFailed(host: Host, cause: Throwable) {
+    fun parentConnectionFailed(host: Host, cause: Throwable?) {
         assertOrExit(parentState is ParentConnecting, "Connection failed while not connecting $parentState")
         parentMatchesOrExit(host)
         logger.warn("Connection failed to parent $host: $cause")
@@ -90,7 +90,7 @@ class TreeState(private val connector: Tree.Connector) {
         }
     }
 
-    fun parentConnectionLost(host: Host, cause: Throwable) {
+    fun parentConnectionLost(host: Host, cause: Throwable?) {
         assertOrExit(parentState is ParentSync || parentState is ParentReady,
             "Connection lost while not connected  $parentState")
         parentMatchesOrExit(host)

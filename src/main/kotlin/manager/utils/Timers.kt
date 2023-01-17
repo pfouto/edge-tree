@@ -11,3 +11,13 @@ class BroadcastTimer : ProtoTimer(TIMER_ID) {
         const val TIMER_ID: Short = 101
     }
 }
+
+class ChildTimer : ProtoTimer(ID) {
+    companion object {
+        const val ID: Short = 102
+    }
+
+    override fun clone(): ProtoTimer {
+        return this
+    }
+}
