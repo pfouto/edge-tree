@@ -1,5 +1,6 @@
 package manager.utils
 
+import manager.Manager
 import pt.unl.fct.di.novasys.network.data.Host
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -7,10 +8,10 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.Inet4Address
 
-class BroadcastState(val host: Host, val location: Pair<Int, Int>, val resources: Int, val active: Boolean) {
+class BroadcastState(val host: Host, val location: Pair<Int, Int>, val resources: Int, val state: Manager.State) {
 
     override fun toString(): String {
-        return "$host $location $resources ${if (active) "active" else "dormant"}"
+        return "$host $location $resources $state"
     }
 
     override fun equals(other: Any?): Boolean {
@@ -22,7 +23,7 @@ class BroadcastState(val host: Host, val location: Pair<Int, Int>, val resources
         if (host != other.host) return false
         if (location != other.location) return false
         if (resources != other.resources) return false
-        if (active != other.active) return false
+        if (state != other.state) return false
 
         return true
     }
@@ -35,7 +36,7 @@ class BroadcastState(val host: Host, val location: Pair<Int, Int>, val resources
         dos.writeInt(location.first)
         dos.writeInt(location.second)
         dos.writeInt(resources)
-        dos.writeBoolean(active)
+        dos.writeBoolean(state == Manager.State.ACTIVE)
         return baos.toByteArray()
     }
 
@@ -48,8 +49,8 @@ class BroadcastState(val host: Host, val location: Pair<Int, Int>, val resources
             val host = Host(Inet4Address.getByAddress(addressBytes), dis.readInt())
             val location = Pair(dis.readInt(), dis.readInt())
             val resources = dis.readInt()
-            val active = dis.readBoolean()
-            return BroadcastState(host, location, resources, active)
+            val state = if (dis.readBoolean()) Manager.State.ACTIVE else Manager.State.INACTIVE
+            return BroadcastState(host, location, resources, state)
         }
     }
 }

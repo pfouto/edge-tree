@@ -3,11 +3,14 @@ package tree
 import getTimeMillis
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.network.data.Host
+import tree.utils.ActivateNotification
 import tree.utils.HybridTimestamp
-import tree.utils.messaging.Downstream
-import tree.utils.messaging.SyncRequest
-import tree.utils.messaging.SyncResponse
-import tree.utils.messaging.Upstream
+import tree.utils.messaging.down.Downstream
+import tree.utils.messaging.down.Reconfiguration
+import tree.utils.messaging.down.Reject
+import tree.utils.messaging.down.SyncResponse
+import tree.utils.messaging.up.SyncRequest
+import tree.utils.messaging.up.Upstream
 import java.util.*
 import kotlin.system.exitProcess
 
@@ -26,85 +29,138 @@ class TreeState(private val connector: Tree.Connector) {
     private val children: MutableMap<Host, ChildState> = mutableMapOf()
 
     //Parent
-    private var parentState: ParentState = ParentNone()
+    private var state: State = Inactive()
+        private set(value){
+            field = value
+            logger.info("TREE-STATE $state")
+        }
+
+    fun activate(notification: ActivateNotification) {
+        logger.info("$notification received")
+        if(state !is Inactive){
+            logger.warn("Already active, ignoring")
+            return
+        }
+
+        if (notification.contact == null) {
+            state = Datacenter()
+        } else
+            newParent(notification.contact)
+        connector.sendStateNotification(true)
+    }
 
     /* ------------------------------- PARENT HANDLERS ------------------------------------------- */
-    fun newParent(parent: Host, backups: MutableList<Host> = mutableListOf()) {
-        assertOrExit(parentState is ParentNone, "Trying to add a new parent when we already have one")
-        parentState = ParentConnecting(parent, backups)
-        logger.info("$parentState")
-        connector.accept(parent)
+    private fun newParent(parent: Host, backups: List<Host> = mutableListOf()) {
+        state = ParentConnecting(parent, backups)
+        connector.connect(parent)
     }
 
-    fun parentConnected(host: Host, proxy: Tree.MessageSenderOut) {
-        assertOrExit(parentState is ParentConnecting, "ConnectionUp while not connecting: $parentState")
+    fun parentConnected(host: Host, proxy: Tree.ParentProxy) {
+        assertOrExit(state is ParentConnecting, "ConnectionUp while not connecting: $state")
         parentMatchesOrExit(host)
-        parentState = ParentSync(host, proxy, (parentState as ParentConnecting).backups)
+        state = ParentSync(host, proxy, (state as ParentConnecting).grandparents)
         updateTsAndStableTs()
-        proxy.accept(SyncRequest(Upstream(stableTimestamp), mutableListOf()))
-        logger.info("$parentState")
+        proxy.upMessage(SyncRequest(Upstream(stableTimestamp), mutableListOf()))
     }
 
-    fun parentSyncResponse(host: Host, msg: SyncResponse) {
-        assertOrExit(parentState is ParentSync, "Sync resp while not sync $parentState")
+    fun onParentSyncResponse(host: Host, msg: SyncResponse) {
+        assertOrExit(state is ParentSync, "Sync resp while not sync $state")
         parentMatchesOrExit(host)
-        val sync = parentState as ParentSync
-        parentState = ParentReady(host, sync.proxy, emptyList(), sync.backups)
-        downstream(host, msg.downstream)
-        logger.info("$parentState")
+        val sync = state as ParentSync
+        state = ParentReady(host, sync.proxy, emptyList(), emptyList())
+        onReconfiguration(host, msg.reconfiguration)
     }
 
-    fun downstream(host: Host, msg: Downstream) {
-        assertOrExit(parentState is ParentReady, "DownstreamMetadata while not ready $parentState")
+    fun onReconfiguration(host: Host, reconfiguration: Reconfiguration) {
+        assertOrExit(state is ParentReady, "Reconfiguration while not ready $state")
         parentMatchesOrExit(host)
-        val newParents: MutableList<Pair<Host, HybridTimestamp>> = mutableListOf()
-        newParents.add(Pair(host, msg.stableTS))
-        newParents.addAll(msg.parents)
-        val ready = parentState as ParentReady
-        ready.predecessors = newParents
-        ready.backups.clear()
-        msg.parents.forEach { (parent, _) -> ready.backups.add(parent) }
+
+        val ready = state as ParentReady
+        val metadata = mutableListOf<Metadata>()
+        for(i in 0 until reconfiguration.grandparents.size + 1)
+            metadata.add(Metadata(HybridTimestamp()))
+
+        state = ParentReady(host, ready.proxy, reconfiguration.grandparents, metadata)
+
+        onDownstream(host, reconfiguration.downstream)
     }
 
-    fun parentConnectionFailed(host: Host, cause: Throwable?) {
-        assertOrExit(parentState is ParentConnecting, "Connection failed while not connecting $parentState")
+    fun onDownstream(host: Host, msg: Downstream) {
+        assertOrExit(state is ParentReady, "DownstreamMetadata while not ready $state")
         parentMatchesOrExit(host)
-        logger.warn("Connection failed to parent $host: $cause")
-        val connecting = parentState as ParentConnecting
-        if (connecting.retries < MAX_RECONNECT_RETRIES) {
-            connecting.retries++
-            connector.accept(host)
-            logger.info("Reconnecting to parent $host, retry ${connecting.retries}")
-        } else {
-            parentState = ParentNone()
-            if (connecting.backups.isNotEmpty()) {
-                val newParent = connecting.backups.removeAt(0)
-                logger.info("Trying to connect to backup parent $newParent")
-                newParent(newParent, backups = connecting.backups)
-            } else {
-                logger.info("No more backups, going to parentless state")
-                parentState = ParentNone()
-                //TODO kill myself if I'm not the root
-                //TODO should this even happen? ROOT should always be there
-            }
-        }
+        val ready = state as ParentReady
+        assertOrExit(msg.timestamps.size == ready.grandparents.size + 1, "Wrong number of timestamps")
+        assertOrExit(msg.timestamps.size == ready.metadata.size, "Wrong number of timestamps")
+
+        for(i in 0 until msg.timestamps.size)
+            ready.metadata[i].timestamp = msg.timestamps[i]
+
+        logger.info("PARENT METADATA ${ready.metadata}")
+
     }
 
     fun parentConnectionLost(host: Host, cause: Throwable?) {
-        assertOrExit(parentState is ParentSync || parentState is ParentReady,
-            "Connection lost while not connected  $parentState")
+        assertOrExit(
+            state is ParentSync || state is ParentReady,
+            "Connection lost while not connected  $state"
+        )
         parentMatchesOrExit(host)
-        val some = parentState as ParentSome
+        val some = state as Node
         logger.warn("Connection lost to parent $host: $cause, reconnecting")
-        parentState = ParentConnecting(some.parent, some.backups)
-        logger.info("$parentState")
-        connector.accept(some.parent)
+        state = ParentConnecting(some.parent, some.grandparents)
+        connector.connect(some.parent)
+    }
+
+    fun parentConnectionFailed(host: Host, cause: Throwable?) {
+        assertOrExit(state is ParentConnecting, "Connection failed while not connecting $state")
+        parentMatchesOrExit(host)
+        logger.warn("Connection failed to parent $host: $cause")
+        val connecting = state as ParentConnecting
+        if (connecting.retries < MAX_RECONNECT_RETRIES) {
+            state = ParentConnecting(connecting.parent, connecting.grandparents, connecting.retries+1)
+            connector.connect(host)
+            logger.info("Reconnecting to parent $host, retry ${(state as ParentConnecting).retries}")
+        } else {
+            tryNextParentOrQuit()
+        }
+    }
+
+    fun onReject(host: Host) {
+        assertOrExit(state is Node, "Reject while no parent $state")
+        parentMatchesOrExit(host)
+        val connected = state as ConnectedNode
+        connected.proxy.closeConnection()
+        tryNextParentOrQuit()
+    }
+
+    private fun tryNextParentOrQuit(){
+       val nodeState = state as Node
+        if (nodeState.grandparents.isNotEmpty()) {
+            val newParent = nodeState.grandparents[0]
+            logger.info("Trying to connect to backup parent $newParent")
+            newParent(newParent, nodeState.grandparents.drop(1))
+        } else {
+            logger.info("No more backups, will deactivate myself!")
+            // kill myself
+            // This should only happen if I am still trying to connect to a node (aka have no backups)
+            // Else, the root should always be available and connectable
+            state = Inactive()
+            for (child in children.values)
+                child.proxy.downMessage(Reject())
+
+            // Send notification to Manager
+            connector.sendStateNotification(false)
+        }
     }
 
     /* ------------------------------- CHILD HANDLERS ------------------------------------------- */
-    fun childConnected(child: Host, channelProxy: Tree.MessageSenderIn) {
+    fun onChildConnected(child: Host, channelProxy: Tree.ChildProxy) {
         children[child] = ChildState(child, channelProxy)
         logger.info("CHILD SYNC $child")
+        if(state is Inactive){
+            channelProxy.downMessage(Reject())
+            logger.info("Rejecting child $child")
+        }
     }
 
     fun onSyncRequest(child: Host, msg: SyncRequest) {
@@ -112,17 +168,18 @@ class TreeState(private val connector: Tree.Connector) {
         if (childState.state != ChildState.State.SYNC)
             throw AssertionError("Sync message while already synced $child")
         updateTsAndStableTs()
-        childState.proxy.accept(SyncResponse(Downstream(stableTimestamp, copyParents()), ByteArray(0)))
+        childState.proxy.downMessage(SyncResponse(buildReconfigurationMessage(), ByteArray(0)))
         childState.state = ChildState.State.READY
-        upstream(child, msg.upstream)
+        onUpstream(child, msg.upstream)
         logger.info("CHILD READY $child")
     }
 
-    fun upstream(child: Host, msg: Upstream) {
+    fun onUpstream(child: Host, msg: Upstream) {
         children[child]!!.childStableTime = msg.ts
+        logger.info("CHILD METADATA $child ${msg.ts}")
     }
 
-    fun childDisconnected(child: Host) {
+    fun onChildDisconnected(child: Host) {
         children.remove(child)!!
         logger.info("CHILD DISCONNECTED $child")
     }
@@ -130,29 +187,41 @@ class TreeState(private val connector: Tree.Connector) {
     /* ------------------------------- TIMERS ------------------------------------------- */
     fun propagateTime() {
         updateTsAndStableTs()
-        if (parentState is ParentReady)
-            (parentState as ParentReady).proxy.accept(Upstream(stableTimestamp))
+        if (state is ParentReady)
+            (state as ParentReady).proxy.upMessage(Upstream(stableTimestamp))
 
-        for (child in children.values) {
-            if (child.state == ChildState.State.READY) {
-                child.proxy.accept(Downstream(stableTimestamp, copyParents()))
+        if(state is ParentReady || state is Datacenter) {
+            val downstream = buildDownstreamMessage()
+            for (child in children.values) {
+                if (child.state == ChildState.State.READY)
+                    child.proxy.downMessage(downstream)
             }
         }
-
-        val sb = StringBuilder()
-        for (child in children.values) {
-            sb.append("${child.child}-${child.childStableTime};")
-        }
-        val pSb = StringBuilder()
-        if (parentState is ParentReady) {
-            for (p in (parentState as ParentReady).predecessors) {
-                pSb.append("${p.first}-${p.second};")
-            }
-        }
-        logger.info("METADATA $timestamp $stableTimestamp C_$sb P_$pSb")
     }
 
     /* ------------------------------------ UTILS ------------------------------------------------ */
+
+    private fun buildDownstreamMessage(): Downstream {
+        val timestamps = mutableListOf<HybridTimestamp>()
+        timestamps.add(stableTimestamp)
+        if(state is ParentReady) {
+            for (p in (state as ParentReady).metadata)
+                timestamps.add(p.timestamp)
+        }
+        return Downstream(timestamps)
+    }
+
+    private fun buildReconfigurationMessage() : Reconfiguration {
+        val grandparents = mutableListOf<Host>()
+        if(state is ParentReady) {
+            grandparents.add(( state as ParentReady).parent)
+            for (p in (state as ParentReady).grandparents)
+                grandparents.add(p)
+        }
+        return Reconfiguration(grandparents, buildDownstreamMessage())
+    }
+
+
     private fun updateTsAndStableTs() {
         timestamp = timestamp.updatedTs()
         var newStable = timestamp
@@ -161,19 +230,14 @@ class TreeState(private val connector: Tree.Connector) {
         stableTimestamp = newStable
     }
 
-    private fun copyParents(): List<Pair<Host, HybridTimestamp>> {
-        if (parentState !is ParentReady)
-            return Collections.emptyList()
-        return (parentState as ParentReady).predecessors.map { Pair(it.first, it.second) }
-    }
-
     private fun parentMatchesOrExit(parent: Host) {
-        when (parentState) {
-            is ParentConnecting -> assertOrExit(parent == (parentState as ParentConnecting).parent, "Parent mismatch")
-            is ParentSync -> assertOrExit(parent == (parentState as ParentSync).parent, "Parent mismatch")
-            is ParentReady -> assertOrExit(parent == (parentState as ParentReady).parent, "Parent mismatch")
-            is ParentNone -> assertOrExit(false, "Parent mismatch")
-            else -> assertOrExit(false, "Unexpected parent state $parentState")
+        when (state) {
+            is ParentConnecting -> assertOrExit(parent == (state as ParentConnecting).parent, "Parent mismatch")
+            is ParentSync -> assertOrExit(parent == (state as ParentSync).parent, "Parent mismatch")
+            is ParentReady -> assertOrExit(parent == (state as ParentReady).parent, "Parent mismatch")
+            is Datacenter -> assertOrExit(false, "Parent mismatch")
+            is Inactive -> assertOrExit(false, "Parent mismatch")
+            else -> assertOrExit(false, "Unexpected parent state $state")
         }
     }
 

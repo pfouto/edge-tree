@@ -1,9 +1,8 @@
-package tree.utils.messaging
+package tree.utils.messaging.up
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
-import tree.utils.HybridTimestamp
 
 data class SyncRequest(
     val upstream: Upstream,
@@ -11,7 +10,7 @@ data class SyncRequest(
 ) : ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 202
+        const val ID: Short = 205
     }
 
     override fun toString(): String {

@@ -16,7 +16,8 @@ import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
 import tree.Tree
-import tree.utils.BootstrapNotification
+import tree.utils.ActivateNotification
+import tree.utils.StateNotification
 import java.net.Inet4Address
 import java.util.*
 
@@ -36,10 +37,14 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
     }
 
     enum class State {
-        DORMANT, LEAF, ROOT
+        INACTIVE, ACTIVE
     }
 
-    private var state: State = State.DORMANT
+    private var state: State = State.INACTIVE
+        private set(value) {
+            field = value
+            logger.info("MANAGER-STATE $value")
+        }
 
     private val self: Host
     private val channel: Int
@@ -55,6 +60,8 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
 
     private val broadcastInterval: Long
     private val membershipExpiration: Long
+
+    private var childTimer = -1L
 
     init {
         self = Host(address, PORT)
@@ -74,6 +81,8 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         registerChannelEventHandler(channel, InConnectionUp.EVENT_ID, this::onInConnectionUp)
 
         registerReplyHandler(BroadcastReply.ID, this::onBroadcastReply)
+        subscribeNotification(StateNotification.ID) { not: StateNotification, _ -> onTreeStateChange(not.active) }
+
 
         registerTimerHandler(BroadcastTimer.TIMER_ID, this::onBroadcastTimer)
         registerTimerHandler(ChildTimer.ID, this::onChildTimer)
@@ -91,12 +100,9 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
     }
 
     override fun init(props: Properties) {
-
         if (amDatacenter) {
-            state = State.ROOT
-            logger.info("STATE ROOT")
             logger.warn("Starting as datacenter")
-            triggerNotification(BootstrapNotification(null))
+            triggerNotification(ActivateNotification(null))
             sendRequest(InitRequest(null), HyParFlood.ID)
         } else {
             logger.warn("Starting asleep")
@@ -105,12 +111,45 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         logger.info("Bind address $self")
 
         setupPeriodicTimer(BroadcastTimer(), 0, broadcastInterval)
-        setupPeriodicTimer(ChildTimer(), 10000, 10000)
+    }
+
+    private fun onTreeStateChange(newState: Boolean){
+        state = if(newState) State.ACTIVE else State.INACTIVE
+        sendRequest(BroadcastRequest(BroadcastState(self, location, resources, state)), HyParFlood.ID)
+
+        if(state==State.ACTIVE)
+            childTimer = setupPeriodicTimer(ChildTimer(), 5000, 10000)
+        else if(childTimer!=-1L){
+            cancelTimer(childTimer)
+            childTimer = -1
+        }
 
     }
 
+    private fun onWakeMessage(msg: WakeMessage, from: Host, sourceProto: Short, channelId: Int) {
+        logger.info("$msg FROM $from. Sending to tree")
+        if (state == State.INACTIVE)
+            triggerNotification(ActivateNotification(msg.contact))
+        else
+            logger.warn("Received wake message while not dormant, ignoring")
+    }
+
+    private fun onChildTimer(timer: ChildTimer, timerId: Long) {
+        if (state == State.INACTIVE)
+            return
+
+        val sortedFilter = membership.filterValues { it.first.state == State.INACTIVE }
+            .toSortedMap(compareBy { it.address.hostAddress })
+        if (!sortedFilter.isEmpty()) {
+            val toWake = sortedFilter.keys.first()
+            logger.info("Waking up $toWake")
+            openConnection(toWake)
+            sendMessage(WakeMessage(Host(self.address, Tree.PORT)), toWake)
+        }
+    }
+
     private fun onBroadcastTimer(timer: BroadcastTimer, timerId: Long) {
-        sendRequest(BroadcastRequest(BroadcastState(self, location, resources, state != State.DORMANT)), HyParFlood.ID)
+        sendRequest(BroadcastRequest(BroadcastState(self, location, resources, state)), HyParFlood.ID)
         val time = getTimeMillis()
         membership.filterValues { it.second < time }.forEach {
             membership.remove(it.key)
@@ -127,35 +166,6 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         membership[newState.host] = Pair(newState, newExpiry)
         if (existingPair == null || newState != existingPair.first) {
             logger.info("MEMBERSHIP update $newState $newExpiry")
-        }
-    }
-
-
-    private fun onChildTimer(timer: ChildTimer, timerId: Long) {
-        if (state == State.DORMANT)
-            return
-
-        val sortedFilter = membership.filterValues { !it.first.active }.toSortedMap(compareBy { it.address.hostAddress })
-        if(!sortedFilter.isEmpty()){
-            val toWake = sortedFilter.keys.first()
-            logger.info("Waking up $toWake")
-            openConnection(toWake)
-            sendMessage(WakeMessage(Host(self.address, Tree.PORT)), toWake)
-        }
-    }
-
-    private fun onWakeMessage(msg: WakeMessage, from: Host, sourceProto: Short, channelId: Int) {
-        logger.info("$msg FROM $from. Sending to tree")
-        if (state == State.DORMANT) {
-            triggerNotification(BootstrapNotification(msg.contact))
-            state = State.LEAF
-            logger.info("STATE LEAF")
-            sendRequest(
-                BroadcastRequest(BroadcastState(self, location, resources, state != State.DORMANT)),
-                HyParFlood.ID
-            )
-        } else {
-            logger.warn("Received wake message while not dormant, ignoring")
         }
     }
 

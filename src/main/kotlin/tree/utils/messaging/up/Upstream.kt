@@ -1,4 +1,4 @@
-package tree.utils.messaging
+package tree.utils.messaging.up
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
@@ -7,7 +7,7 @@ import tree.utils.HybridTimestamp
 
 data class Upstream(val ts: HybridTimestamp): ProtoMessage(ID) {
     companion object {
-        const val ID: Short = 204
+        const val ID: Short = 206
     }
 
     override fun toString(): String {

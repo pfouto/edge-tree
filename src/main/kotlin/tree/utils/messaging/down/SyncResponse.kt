@@ -1,20 +1,17 @@
-package tree.utils.messaging
+package tree.utils.messaging.down
 
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
 
-data class SyncResponse(
-    val downstream: Downstream,
-    val data: ByteArray,
-) : ProtoMessage(ID) {
+data class SyncResponse(val reconfiguration: Reconfiguration, val data: ByteArray) : ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 203
+        const val ID: Short = 204
     }
 
     override fun toString(): String {
-        return "SyncResponse($downstream, data=${data.size})"
+        return "SyncResponse($reconfiguration, data=${data.size})"
     }
 
     override fun equals(other: Any?): Boolean {
@@ -23,30 +20,30 @@ data class SyncResponse(
 
         other as SyncResponse
 
-        if (downstream != other.downstream) return false
+        if (reconfiguration != other.reconfiguration) return false
         if (!data.contentEquals(other.data)) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        var result = downstream.hashCode()
+        var result = reconfiguration.hashCode()
         result = 31 * result + data.contentHashCode()
         return result
     }
 
     object Serializer : ISerializer<SyncResponse> {
         override fun serialize(msg: SyncResponse, out: ByteBuf) {
-            Downstream.Serializer.serialize(msg.downstream, out)
+            Reconfiguration.Serializer.serialize(msg.reconfiguration, out)
             out.writeInt(msg.data.size)
             out.writeBytes(msg.data)
         }
 
         override fun deserialize(buff: ByteBuf): SyncResponse {
-            val downstream = Downstream.Serializer.deserialize(buff)
+            val reconfiguration = Reconfiguration.Serializer.deserialize(buff)
             val data = ByteArray(buff.readInt())
             buff.readBytes(data)
-            return SyncResponse(downstream, data)
+            return SyncResponse(reconfiguration, data)
         }
     }
 

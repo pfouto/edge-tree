@@ -6,16 +6,18 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
-import tree.utils.messaging.Downstream
-import tree.utils.messaging.SyncRequest
-import tree.utils.messaging.SyncResponse
-import tree.utils.messaging.Upstream
-import tree.utils.BootstrapNotification
+import tree.utils.ActivateNotification
+import tree.utils.StateNotification
 import tree.utils.PropagateTimer
 import tree.utils.ReconnectTimer
+import tree.utils.messaging.down.Downstream
+import tree.utils.messaging.down.Reconfiguration
+import tree.utils.messaging.down.Reject
+import tree.utils.messaging.down.SyncResponse
+import tree.utils.messaging.up.SyncRequest
+import tree.utils.messaging.up.Upstream
 import java.net.Inet4Address
 import java.util.*
-import java.util.function.Consumer
 
 class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID) {
 
@@ -37,8 +39,6 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
     private val propagateTimeout: Long
     private val self: Host
 
-    private var bootstrapped: Boolean = false
-
     private val channel: Int
 
     init {
@@ -55,10 +55,9 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
     }
 
     override fun init(props: Properties) {
-        subscribeNotification(BootstrapNotification.ID, ::onBootstrapNot)
 
         registerChannelEventHandler(channel, OutConnectionUp.EVENT_ID)
-        { event: OutConnectionUp, _ -> treeState.parentConnected(event.node, MessageSenderOut(event.node)) }
+        { event: OutConnectionUp, _ -> treeState.parentConnected(event.node, ParentProxy(event.node)) }
 
         registerChannelEventHandler(channel, OutConnectionFailed.EVENT_ID)
         { event: OutConnectionFailed<ProtoMessage>, _ -> treeState.parentConnectionFailed(event.node, event.cause) }
@@ -67,83 +66,91 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
         { event: OutConnectionDown, _ -> treeState.parentConnectionLost(event.node, event.cause) }
 
         registerChannelEventHandler(channel, InConnectionUp.EVENT_ID)
-        { event: InConnectionUp, _: Int -> treeState.childConnected(event.node, MessageSenderIn(event.node)) }
+        { event: InConnectionUp, _: Int -> treeState.onChildConnected(event.node, ChildProxy(event.node)) }
 
         registerChannelEventHandler(channel, InConnectionDown.EVENT_ID)
-        { event: InConnectionDown, _: Int -> treeState.childDisconnected(event.node) }
+        { event: InConnectionDown, _: Int -> treeState.onChildDisconnected(event.node) }
 
         registerMessageSerializer(channel, SyncRequest.ID, SyncRequest.Serializer)
         registerMessageSerializer(channel, SyncResponse.ID, SyncResponse.Serializer)
         registerMessageSerializer(channel, Upstream.ID, Upstream.Serializer)
         registerMessageSerializer(channel, Downstream.ID, Downstream.Serializer)
+        registerMessageSerializer(channel, Reject.ID, Reject.Serializer)
+        registerMessageSerializer(channel, Reconfiguration.ID, Reconfiguration.Serializer)
 
         registerMessageHandler(
-            channel, SyncRequest.ID,
+            channel,
+            SyncRequest.ID,
             { msg: SyncRequest, from, _, _ -> treeState.onSyncRequest(from, msg) },
             ::onMessageFailed
         )
         registerMessageHandler(
             channel, SyncResponse.ID,
-            { msg: SyncResponse, from, _, _ -> treeState.parentSyncResponse(from, msg) },
+            { msg: SyncResponse, from, _, _ -> treeState.onParentSyncResponse(from, msg) },
             this::onMessageFailed
         )
         registerMessageHandler(
             channel, Upstream.ID,
-            { msg: Upstream, from, _, _ -> treeState.upstream(from, msg) },
+            { msg: Upstream, from, _, _ -> treeState.onUpstream(from, msg) },
             this::onMessageFailed
         )
 
         registerMessageHandler(
             channel, Downstream.ID,
-            { msg: Downstream, from, _, _ -> treeState.downstream(from, msg) },
+            { msg: Downstream, from, _, _ -> treeState.onDownstream(from, msg) },
             this::onMessageFailed
         )
+
+        registerMessageHandler(
+            channel, Reject.ID,
+            { _, from, _, _ -> treeState.onReject(from) },
+            this::onMessageFailed
+        )
+
+        registerMessageHandler(
+            channel, Reconfiguration.ID,
+            { msg: Reconfiguration, from, _, _ -> treeState.onReconfiguration(from, msg) },
+            this::onMessageFailed
+        )
+
+        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> treeState.activate(not) }
 
         registerTimerHandler(ReconnectTimer.ID) { timer: ReconnectTimer, _ -> openConnection(timer.node) }
         registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> treeState.propagateTime() }
 
         logger.info("Bind address $self")
-    }
 
-    private fun onBootstrapNot(notification: BootstrapNotification, emmiter: Short) {
-        logger.info("$notification received")
-
-        if (bootstrapped) {
-            logger.warn("Already bootstrapped, ignoring")
-            return
-        }
-
-        val contact = notification.contact
-        if (contact != null) {
-            treeState.newParent(contact)
-        }
-        //logger.info("Setting up childTimer")
         setupPeriodicTimer(PropagateTimer(), propagateTimeout, propagateTimeout)
-
-        bootstrapped = true
     }
 
     private fun onMessageFailed(msg: ProtoMessage, to: Host, destProto: Short, cause: Throwable, channelId: Int) {
         logger.warn("Message $msg to $to failed: ${cause.localizedMessage}")
-        //TODO redirect to handler?r
+        //TODO redirect TreeState handler?
     }
 
-    inner class MessageSenderOut(private val node: Host) : Consumer<ProtoMessage> {
-        override fun accept(msg: ProtoMessage) {
+    inner class ParentProxy(private val node: Host) {
+        fun upMessage(msg: ProtoMessage) {
             sendMessage(msg, node, TCPChannel.CONNECTION_OUT)
+        }
+
+        fun closeConnection() {
+            closeConnection(node, TCPChannel.CONNECTION_OUT)
         }
     }
 
-    inner class MessageSenderIn(private val node: Host) : Consumer<ProtoMessage> {
-        override fun accept(msg: ProtoMessage) {
+    inner class ChildProxy(private val node: Host) {
+        fun downMessage(msg: ProtoMessage) {
             sendMessage(msg, node, TCPChannel.CONNECTION_IN)
         }
     }
 
-    inner class Connector : Consumer<Host> {
-        override fun accept(node: Host) {
+    inner class Connector {
+        fun connect(node: Host) {
             openConnection(node)
         }
-    }
 
+        fun sendStateNotification(active: Boolean) {
+            triggerNotification(StateNotification(active))
+        }
+    }
 }
