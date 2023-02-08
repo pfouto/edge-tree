@@ -95,7 +95,7 @@ class TreeState(private val connector: Tree.Connector) {
         for(i in 0 until msg.timestamps.size)
             ready.metadata[i].timestamp = msg.timestamps[i]
 
-        logger.info("PARENT METADATA ${ready.metadata}")
+        logger.info("PARENT-METADATA ${ready.metadata.joinToString(":", prefix = "[", postfix = "]")}")
 
     }
 
@@ -176,7 +176,7 @@ class TreeState(private val connector: Tree.Connector) {
 
     fun onUpstream(child: Host, msg: Upstream) {
         children[child]!!.childStableTime = msg.ts
-        logger.info("CHILD METADATA $child ${msg.ts}")
+        logger.info("CHILD-METADATA $child ${msg.ts}")
     }
 
     fun onChildDisconnected(child: Host) {

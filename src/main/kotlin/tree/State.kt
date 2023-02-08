@@ -17,13 +17,13 @@ abstract class State
 
 class Inactive : State() {
     override fun toString(): String {
-        return "Inactive"
+        return "INACTIVE"
     }
 }
 
 class Datacenter : State() {
     override fun toString(): String {
-        return "Datacenter"
+        return "DATACENTER"
     }
 }
 
@@ -31,7 +31,7 @@ abstract class Node(val parent: Host, val grandparents: List<Host>) : State()
 
 class ParentConnecting(parent: Host, grandparents: List<Host>, val retries: Int = 1) : Node(parent, grandparents) {
     override fun toString(): String {
-        return "ParentConnecting $parent $grandparents $retries"
+        return "PARENT_CONNECTING $parent $grandparents $retries"
     }
 }
 
@@ -41,7 +41,7 @@ abstract class ConnectedNode(parent: Host, val proxy: Tree.ParentProxy, grandpar
 class ParentSync(parent: Host, proxy: Tree.ParentProxy, grandparents: List<Host>) :
     ConnectedNode(parent, proxy, grandparents) {
     override fun toString(): String {
-        return "ParentSync $parent $grandparents"
+        return "PARENT_SYNC $parent $grandparents"
     }
 }
 
@@ -54,7 +54,8 @@ class ParentReady(
 ) :
     ConnectedNode(parent, proxy, grandparents) {
     override fun toString(): String {
-        return "ParentReady $parent, $grandparents"
+
+        return "PARENT_READY $parent ${grandparents.joinToString(",", prefix = "[", postfix = "]")}"
     }
 }
 
