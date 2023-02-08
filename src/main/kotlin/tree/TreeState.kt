@@ -83,6 +83,10 @@ class TreeState(private val connector: Tree.Connector) {
         state = ParentReady(host, ready.proxy, reconfiguration.grandparents, metadata)
 
         onDownstream(host, reconfiguration.downstream)
+
+        val reconfigMsg = buildReconfigurationMessage()
+        for(child in children.values)
+            child.proxy.downMessage(reconfigMsg)
     }
 
     fun onDownstream(host: Host, msg: Downstream) {
