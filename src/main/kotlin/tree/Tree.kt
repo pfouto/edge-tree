@@ -41,11 +41,19 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
 
     private val channel: Int
 
+    private val cassandraConfigMap : Map<String, Any>
+
     init {
         reconnectTimeout = props.getProperty(RECONNECT_TIMEOUT_KEY, RECONNECT_TIMEOUT_DEFAULT).toLong()
         propagateTimeout = props.getProperty(PROPAGATE_TIMEOUT_KEY, PROPAGATE_TIMEOUT_DEFAULT).toLong()
 
         self = Host(address, PORT)
+
+        cassandraConfigMap = mapOf<String, Any>(
+            "cluster_name" to "Test Cluster",
+            "listen_address" to address.hostAddress,
+        )
+
         treeState = TreeState(Connector())
         val channelProps = Properties()
         channelProps.setProperty(TCPChannel.ADDRESS_KEY, self.address.hostAddress)
@@ -113,7 +121,7 @@ class Tree(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID)
             this::onMessageFailed
         )
 
-        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> treeState.activate(not) }
+        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> treeState.activate(not, cassandraConfigMap) }
 
         registerTimerHandler(ReconnectTimer.ID) { timer: ReconnectTimer, _ -> openConnection(timer.node) }
         registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> treeState.propagateTime() }

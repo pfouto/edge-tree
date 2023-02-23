@@ -13,7 +13,7 @@ class HybridTimestamp(val logical: Long = 0, val counter: Int = 0) {
     }
 
     fun updatedTs(): HybridTimestamp {
-        val newLogical = Math.max(logical, getTimeMillis())
+        val newLogical = logical.coerceAtLeast(getTimeMillis())
         val newCounter = if (logical == newLogical) counter else 0
         return HybridTimestamp(newLogical, newCounter)
     }

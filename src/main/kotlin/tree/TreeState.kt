@@ -1,6 +1,10 @@
 package tree
 
 import getTimeMillis
+import org.apache.cassandra.config.Config
+import org.apache.cassandra.config.YamlConfigurationLoader
+import org.apache.cassandra.net.MessagingService
+import org.apache.cassandra.service.CassandraDaemon
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.network.data.Host
 import tree.utils.ActivateNotification
@@ -11,7 +15,8 @@ import tree.utils.messaging.down.Reject
 import tree.utils.messaging.down.SyncResponse
 import tree.utils.messaging.up.SyncRequest
 import tree.utils.messaging.up.Upstream
-import java.util.*
+import java.net.URL
+import java.util.function.Supplier
 import kotlin.system.exitProcess
 
 class TreeState(private val connector: Tree.Connector) {
@@ -35,18 +40,36 @@ class TreeState(private val connector: Tree.Connector) {
             logger.info("TREE-STATE $state")
         }
 
-    fun activate(notification: ActivateNotification) {
+    fun activate(notification: ActivateNotification, cassandraConfigMap: Map<String, Any>) {
         logger.info("$notification received")
         if(state !is Inactive){
             logger.warn("Already active, ignoring")
             return
         }
 
+
+        val config = YamlConfigurationLoader().loadConfig(URL("file:./cassandra.yaml"))
+        Config.setOverrideLoadConfig { config }
+        //TODO setup override config
+        logger.info("Instantiating cassandra")
+        System.setProperty("cassandra.storagedir", "/tmp/cassandra")
+        CassandraDaemon.getInstanceForTesting().activate()
+        MessagingService.instance().inboundSink.add { message ->
+            //TODO do something useful here
+            println("Received message ${message.verb()} from ${message.from()}")
+            true
+        }
+        //TODO create keyspace and tables
+        logger.info("Cassandra instanced")
+
+
+
         if (notification.contact == null) {
             state = Datacenter()
         } else
             newParent(notification.contact)
         connector.sendStateNotification(true)
+
     }
 
     /* ------------------------------- PARENT HANDLERS ------------------------------------------- */

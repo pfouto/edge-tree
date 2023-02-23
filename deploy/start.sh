@@ -9,7 +9,7 @@ gid=$6
 
 echo "Running jar..." > /proc/1/fd/1
 
-java -DlogFilename=/logs/${exp_name}/${c_name}.log -jar tree-fat-1.0-SNAPSHOT.jar hostname=${c_name} region=${region} datacenter=${regional_dc} > /proc/1/fd/1 2>&1
+java -DlogFilename=/logs/${exp_name}/${c_name}.log -Djava.library.path=./lib/sigar-bin -jar tree-fat-1.0-SNAPSHOT.jar hostname=${c_name} region=${region} datacenter=${regional_dc} > /proc/1/fd/1 2>&1
 
 echo "Chmoding..." > /proc/1/fd/1
 
