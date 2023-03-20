@@ -29,15 +29,15 @@ fun main(args: Array<String>) {
 
         val babel = Babel.getInstance()
 
-        val tree = Tree(me, properties)
+        val treeProto = Tree(me, properties)
         val hyParFlood = HyParFlood(me, properties)
         val manager = Manager(me, properties)
 
-        babel.registerProtocol(tree)
+        babel.registerProtocol(treeProto)
         babel.registerProtocol(hyParFlood)
         babel.registerProtocol(manager)
 
-        tree.init(properties)
+        treeProto.init(properties)
         hyParFlood.init(properties)
         manager.init(properties)
 

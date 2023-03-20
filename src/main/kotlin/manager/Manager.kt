@@ -2,22 +2,18 @@ package manager
 
 import getTimeMillis
 import hyparflood.HyParFlood
-import hyparflood.utils.BroadcastReply
-import hyparflood.utils.BroadcastRequest
-import hyparflood.utils.InitRequest
+import ipc.*
 import manager.utils.BroadcastState
 import manager.utils.BroadcastTimer
 import manager.utils.ChildTimer
-import manager.utils.messaging.WakeMessage
+import manager.messaging.WakeMessage
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
-import tree.Tree
-import tree.utils.ActivateNotification
-import tree.utils.StateNotification
+import tree.TreeProto
 import java.net.Inet4Address
 import java.util.*
 
@@ -25,8 +21,8 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
 
     companion object {
         const val NAME = "Manager"
-        const val ID: Short = 101
-        const val PORT = 2900
+        const val ID: Short = 100
+        const val PORT = 20100
 
         const val DATACENTER_KEY = "datacenter"
         const val REGION_KEY = "region"
@@ -144,7 +140,7 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
             val toWake = sortedFilter.keys.first()
             logger.info("Waking up $toWake")
             openConnection(toWake)
-            sendMessage(WakeMessage(Host(self.address, Tree.PORT)), toWake)
+            sendMessage(WakeMessage(Host(self.address, TreeProto.PORT)), toWake)
         }
     }
 

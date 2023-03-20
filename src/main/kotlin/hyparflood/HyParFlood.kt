@@ -1,7 +1,8 @@
 package hyparflood
 
+import hyparflood.messaging.*
 import hyparflood.utils.*
-import hyparflood.utils.messaging.*
+import ipc.*
 import manager.Manager
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
@@ -16,8 +17,8 @@ import kotlin.math.min
 class HyParFlood(address: Inet4Address, properties: Properties) : GenericProtocol(NAME, ID) {
     companion object {
         const val NAME = "HyParFlood"
-        const val ID: Short = 301
-        const val PORT = 2902
+        const val ID: Short = 300
+        const val PORT = 2300
 
         const val MAX_BACKOFF: Int = 60000
         private val logger = LogManager.getLogger()

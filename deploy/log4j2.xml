@@ -18,8 +18,8 @@
         <!--Logger level="info" name="io.netty"/>
         <Logger level="info" name="pt.unl.fct.di.novasys.network"/>
         <Logger level="info" name="pt.unl.fct.di.novasys.channel"/>
-        <Logger level="info" name="pt.unl.fct.di.novasys.babel"/>
-        <Logger level="info" name="org.apache.cassandra"/-->
+        <Logger level="info" name="pt.unl.fct.di.novasys.babel"/-->
+        <Logger level="warn" name="org.apache.cassandra"/>
 
         <!--Logger level="info" name="tree"/>
         <Logger level="info" name="manager"/-->
