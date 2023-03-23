@@ -27,7 +27,7 @@ fun main(args: Array<String>) {
 
         val me: Inet4Address = Inet4Address.getByName(properties.getProperty("address")) as Inet4Address
 
-        logger.info("Hello I am ${properties.getProperty("hostname")} ${me.hostAddress}")
+        logger.info("Hello I am ${config.hostname} ${config.ip_addr}")
 
         val babel = Babel.getInstance()
 
