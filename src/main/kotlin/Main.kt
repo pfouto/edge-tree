@@ -23,6 +23,8 @@ fun main(args: Array<String>) {
         val properties = Babel.loadConfig(args, "properties.conf")
         addInterfaceIp(properties)
 
+        val config = Config(properties)
+
         val me: Inet4Address = Inet4Address.getByName(properties.getProperty("address")) as Inet4Address
 
         logger.info("Hello I am ${properties.getProperty("hostname")} ${me.hostAddress}")

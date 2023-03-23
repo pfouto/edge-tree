@@ -27,6 +27,7 @@ class CassandraWrapper {
         val config = YamlConfigurationLoader().loadConfig(URL("file:./cassandra.yaml"))
         Config.setOverrideLoadConfig { config }
 
+
         System.setProperty("cassandra.storagedir", "/tmp/cassandra")
 
         DatabaseDescriptor.daemonInitialization()
