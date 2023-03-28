@@ -1,5 +1,6 @@
 package proxy
 
+import Config
 import ipc.*
 import org.apache.logging.log4j.LogManager
 import proxy.messaging.PersistenceMessage
@@ -17,11 +18,12 @@ import storage.Storage
 import java.net.Inet4Address
 import java.util.*
 
-class ClientProxy(address: Inet4Address, properties: Properties) : GenericProtocol(NAME, ID) {
+class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME, ID) {
     companion object {
         const val NAME = "ClientProxy"
         const val ID: Short = 400
-        const val PORT = 2400
+
+        private const val PORT = 2400
 
         private val logger = LogManager.getLogger()
     }

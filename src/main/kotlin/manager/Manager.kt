@@ -1,5 +1,6 @@
 package manager
 
+import Config
 import getTimeMillis
 import hyparflood.HyParFlood
 import ipc.*
@@ -13,21 +14,16 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
-import tree.TreeProto
 import java.net.Inet4Address
 import java.util.*
 
-class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID) {
+class Manager(private val selfAddress: Inet4Address, config: Config) : GenericProtocol(NAME, ID) {
 
     companion object {
         const val NAME = "Manager"
         const val ID: Short = 100
-        const val PORT = 20100
 
-        const val DATACENTER_KEY = "datacenter"
-        const val REGION_KEY = "region"
-        const val BROADCAST_INTERVAL_KEY = "broadcast_interval"
-        const val BROADCAST_INTERVAL_DEFAULT = "2000"
+        private const val PORT = 20100
 
         private val logger = LogManager.getLogger()
     }
@@ -42,7 +38,6 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
             logger.info("MANAGER-STATE $value")
         }
 
-    private val self: Host
     private val channel: Int
 
     private val region: String
@@ -52,7 +47,7 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
     private val location: Pair<Int, Int> = Pair(0, 0)
     private val resources: Int = 0
 
-    private val membership: MutableMap<Host, Pair<BroadcastState, Long>>
+    private val membership: MutableMap<Inet4Address, Pair<BroadcastState, Long>>
 
     private val broadcastInterval: Long
     private val membershipExpiration: Long
@@ -60,10 +55,9 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
     private var childTimer = -1L
 
     init {
-        self = Host(address, PORT)
         val channelProps = Properties()
-        channelProps.setProperty(TCPChannel.ADDRESS_KEY, self.address.hostAddress)
-        channelProps.setProperty(TCPChannel.PORT_KEY, self.port.toString())
+        channelProps.setProperty(TCPChannel.ADDRESS_KEY, selfAddress.hostAddress)
+        channelProps.setProperty(TCPChannel.PORT_KEY, PORT.toString())
         channelProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "true")
         channel = createChannel(TCPChannel.NAME, channelProps)
 
@@ -83,11 +77,11 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         registerTimerHandler(BroadcastTimer.TIMER_ID, this::onBroadcastTimer)
         registerTimerHandler(ChildTimer.ID, this::onChildTimer)
 
-        region = props.getProperty(REGION_KEY)
-        regionalDatacenter = props.getProperty(DATACENTER_KEY)
-        amDatacenter = regionalDatacenter == props.getProperty("hostname")
+        region = config.region
+        regionalDatacenter = config.datacenter
+        amDatacenter = regionalDatacenter == config.hostname
 
-        broadcastInterval = props.getProperty(BROADCAST_INTERVAL_KEY, BROADCAST_INTERVAL_DEFAULT).toLong()
+        broadcastInterval = config.man_broadcast_interval
         membershipExpiration = broadcastInterval * 3
 
         membership = mutableMapOf()
@@ -104,14 +98,14 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
             logger.warn("Starting asleep")
             sendRequest(InitRequest(Inet4Address.getByName(regionalDatacenter) as Inet4Address), HyParFlood.ID)
         }
-        logger.info("Bind address $self")
+        logger.info("Bind address $selfAddress")
 
         setupPeriodicTimer(BroadcastTimer(), 0, broadcastInterval)
     }
 
     private fun onTreeStateChange(newState: Boolean){
         state = if(newState) State.ACTIVE else State.INACTIVE
-        sendRequest(BroadcastRequest(BroadcastState(self, location, resources, state)), HyParFlood.ID)
+        sendRequest(BroadcastRequest(BroadcastState(selfAddress, location, resources, state)), HyParFlood.ID)
 
         if(state==State.ACTIVE)
             childTimer = setupPeriodicTimer(ChildTimer(), 5000, 10000)
@@ -135,17 +129,17 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
             return
 
         val sortedFilter = membership.filterValues { it.first.state == State.INACTIVE }
-            .toSortedMap(compareBy { it.address.hostAddress })
+            .toSortedMap(compareBy { it.hostAddress })
         if (!sortedFilter.isEmpty()) {
-            val toWake = sortedFilter.keys.first()
+            val toWake = Host(sortedFilter.keys.first(), PORT)
             logger.info("Waking up $toWake")
             openConnection(toWake)
-            sendMessage(WakeMessage(Host(self.address, TreeProto.PORT)), toWake)
+            sendMessage(WakeMessage(selfAddress), toWake)
         }
     }
 
     private fun onBroadcastTimer(timer: BroadcastTimer, timerId: Long) {
-        sendRequest(BroadcastRequest(BroadcastState(self, location, resources, state)), HyParFlood.ID)
+        sendRequest(BroadcastRequest(BroadcastState(selfAddress, location, resources, state)), HyParFlood.ID)
         val time = getTimeMillis()
         membership.filterValues { it.second < time }.forEach {
             membership.remove(it.key)
@@ -157,9 +151,9 @@ class Manager(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         val newState = BroadcastState.fromByteArray(reply.payload)
         val newExpiry = getTimeMillis() + membershipExpiration
 
-        val existingPair = membership[newState.host]
+        val existingPair = membership[newState.address]
 
-        membership[newState.host] = Pair(newState, newExpiry)
+        membership[newState.address] = Pair(newState, newExpiry)
         if (existingPair == null || newState != existingPair.first) {
             logger.info("MEMBERSHIP update $newState $newExpiry")
         }

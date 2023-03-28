@@ -1,5 +1,6 @@
 package tree
 
+import Config
 import ipc.ActivateNotification
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
@@ -18,36 +19,30 @@ import tree.messaging.up.Upstream
 import java.net.Inet4Address
 import java.util.*
 
-abstract class TreeProto(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID) {
+abstract class TreeProto(private val address: Inet4Address, config: Config) : GenericProtocol(NAME, ID) {
 
     companion object {
         const val NAME = "Tree"
         const val ID: Short = 200
+
         const val PORT = 2200
-        const val RECONNECT_TIMEOUT_KEY = "reconnect_timeout"
-        const val RECONNECT_TIMEOUT_DEFAULT = "3000"
-        const val PROPAGATE_TIMEOUT_KEY = "propagate_timeout"
-        const val PROPAGATE_TIMEOUT_DEFAULT = "2000"
 
         private val logger = LogManager.getLogger()
     }
 
     private val reconnectTimeout: Long
     private val propagateTimeout: Long
-    private val self: Host
 
     private val channel: Int
 
 
     init {
-        reconnectTimeout = props.getProperty(RECONNECT_TIMEOUT_KEY, RECONNECT_TIMEOUT_DEFAULT).toLong()
-        propagateTimeout = props.getProperty(PROPAGATE_TIMEOUT_KEY, PROPAGATE_TIMEOUT_DEFAULT).toLong()
-
-        self = Host(address, PORT)
+        reconnectTimeout = config.tree_reconnect_timeout
+        propagateTimeout = config.tree_propagate_timeout
 
         val channelProps = Properties()
-        channelProps.setProperty(TCPChannel.ADDRESS_KEY, self.address.hostAddress)
-        channelProps.setProperty(TCPChannel.PORT_KEY, self.port.toString())
+        channelProps.setProperty(TCPChannel.ADDRESS_KEY, address.hostAddress)
+        channelProps.setProperty(TCPChannel.PORT_KEY, PORT.toString())
         channelProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "true")
         channel = createChannel(TCPChannel.NAME, channelProps)
 
@@ -116,7 +111,7 @@ abstract class TreeProto(address: Inet4Address, props: Properties) : GenericProt
     }
 
     override fun init(props: Properties) {
-        logger.info("Bind address $self")
+        logger.info("Bind address $address")
 
         setupPeriodicTimer(PropagateTimer(), propagateTimeout, propagateTimeout)
     }

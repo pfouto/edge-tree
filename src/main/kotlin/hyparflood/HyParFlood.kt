@@ -1,5 +1,6 @@
 package hyparflood
 
+import Config
 import hyparflood.messaging.*
 import hyparflood.utils.*
 import ipc.*
@@ -14,13 +15,14 @@ import java.util.*
 import kotlin.math.min
 
 
-class HyParFlood(address: Inet4Address, properties: Properties) : GenericProtocol(NAME, ID) {
+class HyParFlood(address: Inet4Address, config: Config) : GenericProtocol(NAME, ID) {
     companion object {
         const val NAME = "HyParFlood"
         const val ID: Short = 300
-        const val PORT = 2300
 
-        const val MAX_BACKOFF: Int = 60000
+        private const val PORT = 2300
+
+        private const val MAX_BACKOFF: Int = 60000
         private val logger = LogManager.getLogger()
     }
 
@@ -51,20 +53,20 @@ class HyParFlood(address: Inet4Address, properties: Properties) : GenericProtoco
     init {
         myself = Host(address, PORT)
 
-        ARWL = properties.getProperty("ARWL", "4").toShort()
-        PRWL = properties.getProperty("PRWL", "2").toShort()
+        ARWL = config.hpf_arwl
+        PRWL = config.hpf_prwl
 
-        shuffleTime = properties.getProperty("shuffleTime", "2000").toShort()
-        timeout = properties.getProperty("helloBackoff", "1000").toShort()
+        shuffleTime = config.hpf_shuffle_time
+        timeout = config.hpf_hello_backoff
         originalTimeout = timeout
 
-        joinTimeout = properties.getProperty("joinTimeout", "2000").toShort()
-        kActive = properties.getProperty("kActive", "2").toShort()
-        kPassive = properties.getProperty("kPassive", "3").toShort()
+        joinTimeout = config.hpf_join_timeout
+        kActive = config.hpf_k_active
+        kPassive = config.hpf_k_passive
 
         rnd = Random()
-        val maxActive: Int = properties.getProperty("ActiveView", "4").toInt()
-        val maxPassive: Int = properties.getProperty("PassiveView", "7").toInt()
+        val maxActive: Int = config.hpf_active_view
+        val maxPassive: Int = config.hpf_passive_view
         active = View("Active", maxActive, myself, rnd)
         passive = View("Passive", maxPassive, myself, rnd)
 

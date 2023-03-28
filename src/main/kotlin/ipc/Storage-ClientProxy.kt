@@ -26,7 +26,7 @@ class ClientWritePersistent(val id: Long) : ProtoReply(ID) {
 
 class TreeReconfigurationClients(val hosts: List<Host>) : ProtoReply(ID) {
     companion object {
-        const val ID: Short = 403
+        const val ID: Short = 404
     }
 }
 

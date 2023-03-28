@@ -1,5 +1,6 @@
 package tree
 
+import Config
 import getTimeMillis
 import ipc.ActivateNotification
 import ipc.StateNotification
@@ -15,10 +16,9 @@ import tree.messaging.down.SyncResponse
 import tree.messaging.up.SyncRequest
 import tree.messaging.up.Upstream
 import java.net.Inet4Address
-import java.util.*
 import kotlin.system.exitProcess
 
-class Tree(address: Inet4Address, props: Properties) : TreeProto(address, props) {
+class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
     companion object {
         private val logger = LogManager.getLogger()
@@ -49,7 +49,7 @@ class Tree(address: Inet4Address, props: Properties) : TreeProto(address, props)
         if (notification.contact == null) {
             state = Datacenter()
         } else
-            newParent(notification.contact)
+            newParent(Host(notification.contact, PORT))
 
         triggerNotification(StateNotification(true))
 
@@ -107,7 +107,6 @@ class Tree(address: Inet4Address, props: Properties) : TreeProto(address, props)
             ready.metadata[i].timestamp = msg.timestamps[i]
 
         logger.info("PARENT-METADATA ${ready.metadata.joinToString(":", prefix = "[", postfix = "]")}")
-
     }
 
     override fun parentConnectionLost(host: Host, cause: Throwable?) {

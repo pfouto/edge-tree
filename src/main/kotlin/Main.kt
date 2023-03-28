@@ -2,6 +2,7 @@ import hyparflood.HyParFlood
 import manager.Manager
 import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
+import proxy.ClientProxy
 import pt.unl.fct.di.novasys.babel.core.Babel
 import tree.Tree
 import java.net.Inet4Address
@@ -31,17 +32,20 @@ fun main(args: Array<String>) {
 
         val babel = Babel.getInstance()
 
-        val treeProto = Tree(me, properties)
-        val hyParFlood = HyParFlood(me, properties)
-        val manager = Manager(me, properties)
+        val treeProto = Tree(me, config)
+        val hyParFlood = HyParFlood(me, config)
+        val manager = Manager(me, config)
+        val clientProxy = ClientProxy(me, config)
 
         babel.registerProtocol(treeProto)
         babel.registerProtocol(hyParFlood)
         babel.registerProtocol(manager)
+        babel.registerProtocol(clientProxy)
 
         treeProto.init(properties)
         hyParFlood.init(properties)
         manager.init(properties)
+        clientProxy.init(properties)
 
         babel.start()
 

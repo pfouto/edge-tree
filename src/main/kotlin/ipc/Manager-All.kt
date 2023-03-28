@@ -1,9 +1,9 @@
 package ipc
 
 import pt.unl.fct.di.novasys.babel.generic.ProtoNotification
-import pt.unl.fct.di.novasys.network.data.Host
+import java.net.Inet4Address
 
-data class ActivateNotification(val contact: Host?) : ProtoNotification(ID) {
+data class ActivateNotification(val contact: Inet4Address?) : ProtoNotification(ID) {
     companion object {
         const val ID: Short = 201
     }
