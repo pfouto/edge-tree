@@ -5,12 +5,11 @@ import java.net.Inet4Address
 
 data class ActivateNotification(val contact: Inet4Address?) : ProtoNotification(ID) {
     companion object {
-        const val ID: Short = 201
+        const val ID: Short = 1
     }
 }
-
-data class StateNotification(val active: Boolean) : ProtoNotification(ID) {
+class DeactivateNotification : ProtoNotification(ID) {
     companion object {
-        const val ID: Short = 202
+        const val ID: Short = 2
     }
 }

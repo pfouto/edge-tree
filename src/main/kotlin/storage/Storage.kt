@@ -1,12 +1,14 @@
 package storage
 
+import Config
 import ipc.ActivateNotification
+import ipc.DeactivateNotification
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import java.net.Inet4Address
 import java.util.*
 
-class Storage(address: Inet4Address, props: Properties) : GenericProtocol(NAME, ID) {
+class Storage(address: Inet4Address, config: Config) : GenericProtocol(NAME, ID) {
 
     companion object {
         const val NAME = "Storage"
@@ -15,17 +17,12 @@ class Storage(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
         private val logger = LogManager.getLogger()
     }
 
-    private val cassandraConfigMap: Map<String, Any>
-
-    private val storageProxy: CassandraWrapper = CassandraWrapper()
+    private val storageProxy: CassandraWrapper = CassandraWrapper(address)
 
     init {
-        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> activate(not) }
+        subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
+        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
 
-        cassandraConfigMap = mapOf<String, Any>(
-            "cluster_name" to "Test Cluster",
-            "listen_address" to address.hostAddress,
-        )
 
     }
 
@@ -33,13 +30,15 @@ class Storage(address: Inet4Address, props: Properties) : GenericProtocol(NAME, 
 
     }
 
-    private fun activate(notification: ActivateNotification) {
+    private fun onActivate(notification: ActivateNotification) {
         logger.info("Instantiating cassandra")
         storageProxy.initialize()
         logger.info("Creating schema")
         storageProxy.createSchema()
+    }
 
-        logger.info("Block")
+    private fun onDeactivate(){
+        logger.info("Storage Deactivating")
     }
 
 

@@ -71,7 +71,8 @@ class Manager(private val selfAddress: Inet4Address, config: Config) : GenericPr
         registerChannelEventHandler(channel, InConnectionUp.EVENT_ID, this::onInConnectionUp)
 
         registerReplyHandler(BroadcastReply.ID, this::onBroadcastReply)
-        subscribeNotification(StateNotification.ID) { not: StateNotification, _ -> onTreeStateChange(not.active) }
+        subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
+        subscribeNotification(ActivateNotification.ID) { _: ActivateNotification, _ -> onActivate() }
 
 
         registerTimerHandler(BroadcastTimer.TIMER_ID, this::onBroadcastTimer)
@@ -103,17 +104,20 @@ class Manager(private val selfAddress: Inet4Address, config: Config) : GenericPr
         setupPeriodicTimer(BroadcastTimer(), 0, broadcastInterval)
     }
 
-    private fun onTreeStateChange(newState: Boolean){
-        state = if(newState) State.ACTIVE else State.INACTIVE
+    private fun onActivate() {
+        state = State.ACTIVE
         sendRequest(BroadcastRequest(BroadcastState(selfAddress, location, resources, state)), HyParFlood.ID)
 
-        if(state==State.ACTIVE)
-            childTimer = setupPeriodicTimer(ChildTimer(), 5000, 10000)
-        else if(childTimer!=-1L){
+        childTimer = setupPeriodicTimer(ChildTimer(), 5000, 10000)
+    }
+
+    private fun onDeactivate(){
+        state = State.INACTIVE
+        sendRequest(BroadcastRequest(BroadcastState(selfAddress, location, resources, state)), HyParFlood.ID)
+        if(childTimer!=-1L){
             cancelTimer(childTimer)
             childTimer = -1
         }
-
     }
 
     private fun onWakeMessage(msg: WakeMessage, from: Host, sourceProto: Short, channelId: Int) {

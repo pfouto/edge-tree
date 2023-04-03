@@ -58,7 +58,9 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
             { msg: RequestMessage, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
 
-        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> activate(not) }
+        subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
+        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
+
         registerReplyHandler(OpReply.ID) { rep: OpReply, _ -> onOpReply(rep) }
         registerReplyHandler(ClientWritePersistent.ID) { rep: ClientWritePersistent, _ -> onClientWritePersistent(rep) }
         registerReplyHandler(TreeReconfigurationClients.ID) { rep: TreeReconfigurationClients, _ -> onTreeReconfiguration(rep) }
@@ -69,16 +71,16 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
 
     }
 
-    private fun activate(notification: ActivateNotification) {
-
+    private fun onActivate(notification: ActivateNotification) {
+        logger.info("ClientProxy Activating")
     }
 
-    private fun deactivate() {
-
+    private fun onDeactivate() {
+        logger.info("ClientProxy Deactivating")
     }
 
     private fun onRequestMessage(from: Host, msg: RequestMessage) {
-        logger.debug("Received message $msg from $from")
+        logger.debug("Received message {} from {}", msg, from)
         val opId = opCounter++
         val pair = Pair(from, msg)
         pendingOperations[opId] = pair

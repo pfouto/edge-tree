@@ -1,3 +1,4 @@
+gradle shadowjar
 
 echo "Copying to cluster"
 rsync -azvhuP -r --delete --exclude 'venv' --exclude=".*" deploy/* cluster:/home/pfouto/edge/deploy

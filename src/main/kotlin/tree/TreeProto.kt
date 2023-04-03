@@ -2,6 +2,7 @@ package tree
 
 import Config
 import ipc.ActivateNotification
+import ipc.DeactivateNotification
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
@@ -104,7 +105,8 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
             { msg: Reconfiguration, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
 
-        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> activate(not) }
+        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
+        subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
 
         registerTimerHandler(ReconnectTimer.ID) { timer: ReconnectTimer, _ -> openConnection(timer.node) }
         registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> propagateTime() }
@@ -116,7 +118,8 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         setupPeriodicTimer(PropagateTimer(), propagateTimeout, propagateTimeout)
     }
 
-    abstract fun activate(notification: ActivateNotification)
+    abstract fun onActivate(notification: ActivateNotification)
+    abstract fun onDeactivate()
     abstract fun parentConnected(host: Host)
     abstract fun onParentSyncResponse(host: Host, msg: SyncResponse)
     abstract fun onReconfiguration(host: Host, reconfiguration: Reconfiguration)

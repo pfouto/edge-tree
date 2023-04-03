@@ -3,7 +3,7 @@ package tree
 import Config
 import getTimeMillis
 import ipc.ActivateNotification
-import ipc.StateNotification
+import ipc.DeactivateNotification
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
@@ -39,7 +39,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
             logger.info("TREE-STATE $state")
         }
 
-    override fun activate(notification: ActivateNotification) {
+    override fun onActivate(notification: ActivateNotification) {
         logger.info("$notification received")
         if (state !is Inactive) {
             logger.warn("Already active, ignoring")
@@ -50,8 +50,9 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
             state = Datacenter()
         } else
             newParent(Host(notification.contact, PORT))
+    }
 
-        triggerNotification(StateNotification(true))
+    override fun onDeactivate() {
 
     }
 
@@ -159,7 +160,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
             for (childState in children.values)
                 sendMessage(reject, childState.child, TCPChannel.CONNECTION_IN)
             // Send notification to Manager
-            triggerNotification(StateNotification(false))
+            triggerNotification(DeactivateNotification())
         }
     }
 

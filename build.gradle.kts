@@ -1,7 +1,7 @@
 plugins {
     kotlin("jvm") version "1.8.10"
     application
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 group = "me.pfouto"
@@ -15,6 +15,7 @@ repositories {
 }
 dependencies {
     testImplementation(kotlin("test"))
+
     implementation("com.github.pfouto:babel-core:0.4.47")
     implementation("org.apache.cassandra:cassandra-all:4.1.0"){
         exclude(group = "org.slf4j", module = "log4j-over-slf4j")
@@ -42,17 +43,10 @@ kotlin { // Extension for easy setup
 }
 
 tasks {
-
     shadowJar {
         // defaults to project.name
         archiveBaseName.set("../../deploy/${project.name}-fat")
         // defaults to all, so removing this overrides the normal, non-fat jar
         archiveClassifier.set("")
-    }
-}
-tasks.withType<Jar> {
-    manifest {
-        attributes["Main-Class"] = application.mainClassName
-        attributes["Multi-Release"] = "true"
     }
 }

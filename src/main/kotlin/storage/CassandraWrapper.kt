@@ -9,13 +9,24 @@ import org.apache.cassandra.io.util.File
 import org.apache.cassandra.service.CassandraDaemon
 import org.apache.cassandra.service.EmbeddedCassandraService
 import org.apache.logging.log4j.LogManager
+import java.net.Inet4Address
 import java.net.URL
 import java.util.*
 
-class CassandraWrapper {
+class CassandraWrapper(address: Inet4Address) {
 
     companion object {
         private val logger = LogManager.getLogger()
+    }
+
+    private val cassandraConfigMap: Map<String, Any>
+
+    init{
+        cassandraConfigMap = mapOf<String, Any>(
+            "cluster_name" to "Test Cluster",
+            "listen_address" to address.hostAddress,
+        )
+
     }
 
     private val daemon: CassandraDaemon = CassandraDaemon(true)

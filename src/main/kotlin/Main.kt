@@ -4,6 +4,7 @@ import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.Logger
 import proxy.ClientProxy
 import pt.unl.fct.di.novasys.babel.core.Babel
+import storage.Storage
 import tree.Tree
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -35,16 +36,19 @@ fun main(args: Array<String>) {
         val treeProto = Tree(me, config)
         val hyParFlood = HyParFlood(me, config)
         val manager = Manager(me, config)
+        val storage = Storage(me, config)
         val clientProxy = ClientProxy(me, config)
 
         babel.registerProtocol(treeProto)
         babel.registerProtocol(hyParFlood)
         babel.registerProtocol(manager)
+        babel.registerProtocol(storage)
         babel.registerProtocol(clientProxy)
 
         treeProto.init(properties)
         hyParFlood.init(properties)
         manager.init(properties)
+        storage.init(properties)
         clientProxy.init(properties)
 
         babel.start()
