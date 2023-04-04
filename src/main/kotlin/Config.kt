@@ -28,6 +28,12 @@ class Config(properties: Properties) {
         const val MAN_BROADCAST_INTERVAL_DEFAULT = "2000"
         const val DATACENTER_KEY = "datacenter"
         const val REGION_KEY = "region"
+        const val TREE_BUILDER_KEY = "tree_builder"
+        const val TREE_BUILDER_DEFAULT = "Random"
+        const val TREE_BUILDER_INTERVAL_KEY = "tree_builder_interval"
+        const val TREE_BUILDER_INTERVAL_DEFAULT = "3000"
+        const val TREE_BUILD_STATIC_LOCATION = "tree_location"
+        const val TREE_BUILD_STATIC_LOCATION_DEFAULT = ""
 
         //Tree
         const val TREE_RECONNECT_TIMEOUT_KEY = "reconnect_timeout"
@@ -70,6 +76,9 @@ class Config(properties: Properties) {
     val man_broadcast_interval: Long
     val datacenter: String
     val region: String
+    val tree_builder: String
+    val tree_builder_interval: Long
+    val tree_build_static_location: String
 
     val tree_reconnect_timeout: Long
     val tree_propagate_timeout: Long
@@ -100,6 +109,11 @@ class Config(properties: Properties) {
             properties.getProperty(MAN_BROADCAST_INTERVAL_KEY, MAN_BROADCAST_INTERVAL_DEFAULT).toLong()
         datacenter = properties.getProperty(DATACENTER_KEY)
         region = properties.getProperty(REGION_KEY)
+        tree_builder = properties.getProperty(TREE_BUILDER_KEY, TREE_BUILDER_DEFAULT)
+        tree_builder_interval =
+            properties.getProperty(TREE_BUILDER_INTERVAL_KEY, TREE_BUILDER_INTERVAL_DEFAULT).toLong()
+        tree_build_static_location =
+            properties.getProperty(TREE_BUILD_STATIC_LOCATION, TREE_BUILD_STATIC_LOCATION_DEFAULT)
 
         tree_reconnect_timeout =
             properties.getProperty(TREE_RECONNECT_TIMEOUT_KEY, TREE_RECONNECT_TIMEOUT_DEFAULT).toLong()

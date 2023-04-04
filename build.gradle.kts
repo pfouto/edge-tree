@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "1.8.10"
+    kotlin("plugin.serialization") version "1.8.10"
     application
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
@@ -15,6 +16,8 @@ repositories {
 }
 dependencies {
     testImplementation(kotlin("test"))
+
+    implementation("com.charleskorn.kaml:kaml:0.53.0")
 
     implementation("com.github.pfouto:babel-core:0.4.47")
     implementation("org.apache.cassandra:cassandra-all:4.1.0"){

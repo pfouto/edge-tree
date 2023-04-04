@@ -12,7 +12,7 @@ class BroadcastTimer : ProtoTimer(TIMER_ID) {
     }
 }
 
-class ChildTimer : ProtoTimer(ID) {
+class TreeBuilderTimer : ProtoTimer(ID) {
     companion object {
         const val ID: Short = 102
     }

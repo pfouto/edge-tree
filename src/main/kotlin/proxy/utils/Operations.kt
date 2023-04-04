@@ -5,11 +5,15 @@ import pt.unl.fct.di.novasys.network.ISerializer
 import pt.unl.fct.di.novasys.network.data.Host
 import tree.utils.HybridTimestamp
 
-data class ReadOperation(val table: String, val key: String) : Operation(READ)
+data class ReadOperation(val partition: String, val key: String) : Operation(READ)
 
-data class WriteOperation(val table: String, val key: String, val value: ByteArray, val hlc: HybridTimestamp, 
-                          val persistence: Short) :
-    Operation(WRITE) {
+data class WriteOperation(
+    val partition: String,
+    val key: String,
+    val value: ByteArray,
+    val hlc: HybridTimestamp,
+    val persistence: Short,
+) : Operation(WRITE) {
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -17,19 +21,19 @@ data class WriteOperation(val table: String, val key: String, val value: ByteArr
 
         other as WriteOperation
 
-        if (table != other.table) return false
+        if (partition != other.partition) return false
         if (key != other.key) return false
         if (!value.contentEquals(other.value)) return false
         if (hlc != other.hlc) return false
-
-        return true
+        return persistence == other.persistence
     }
 
     override fun hashCode(): Int {
-        var result = table.hashCode()
+        var result = partition.hashCode()
         result = 31 * result + key.hashCode()
         result = 31 * result + value.contentHashCode()
         result = 31 * result + hlc.hashCode()
+        result = 31 * result + persistence
         return result
     }
 }
@@ -49,12 +53,12 @@ abstract class Operation(val type: Short) {
             out.writeShort(msg.type.toInt())
             when (msg) {
                 is ReadOperation -> {
-                    out.writeCharSequence(msg.table, Charsets.UTF_8)
+                    out.writeCharSequence(msg.partition, Charsets.UTF_8)
                     out.writeCharSequence(msg.key, Charsets.UTF_8)
                 }
 
                 is WriteOperation -> {
-                    out.writeCharSequence(msg.table, Charsets.UTF_8)
+                    out.writeCharSequence(msg.partition, Charsets.UTF_8)
                     out.writeCharSequence(msg.key, Charsets.UTF_8)
                     out.writeInt(msg.value.size)
                     out.writeBytes(msg.value)
@@ -73,20 +77,20 @@ abstract class Operation(val type: Short) {
         override fun deserialize(buff: ByteBuf): Operation {
             return when (val type = buff.readShort()) {
                 READ -> {
-                    val table = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
+                    val partition = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
                     val key = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
-                    ReadOperation(table, key)
+                    ReadOperation(partition, key)
                 }
 
                 WRITE -> {
-                    val table = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
+                    val partition = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
                     val key = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
                     val valueSize = buff.readInt()
                     val value = ByteArray(valueSize)
                     buff.readBytes(value)
                     val hlc = HybridTimestamp.Serializer.deserialize(buff)
                     val persistence = buff.readShort()
-                    WriteOperation(table, key, value, hlc, persistence)
+                    WriteOperation(partition, key, value, hlc, persistence)
                 }
 
                 MIGRATION -> {

@@ -1,12 +1,14 @@
 package manager
 
 import Config
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.decodeFromStream
 import getTimeMillis
 import hyparflood.HyParFlood
 import ipc.*
 import manager.utils.BroadcastState
 import manager.utils.BroadcastTimer
-import manager.utils.ChildTimer
+import manager.utils.TreeBuilderTimer
 import manager.messaging.WakeMessage
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
@@ -14,10 +16,11 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
+import java.io.FileInputStream
 import java.net.Inet4Address
 import java.util.*
 
-class Manager(private val selfAddress: Inet4Address, config: Config) : GenericProtocol(NAME, ID) {
+class Manager(private val selfAddress: Inet4Address, private val config: Config) : GenericProtocol(NAME, ID) {
 
     companion object {
         const val NAME = "Manager"
@@ -30,6 +33,10 @@ class Manager(private val selfAddress: Inet4Address, config: Config) : GenericPr
 
     enum class State {
         INACTIVE, ACTIVE
+    }
+
+    enum class TreeBuilder {
+        Random, Static
     }
 
     private var state: State = State.INACTIVE
@@ -52,7 +59,9 @@ class Manager(private val selfAddress: Inet4Address, config: Config) : GenericPr
     private val broadcastInterval: Long
     private val membershipExpiration: Long
 
-    private var childTimer = -1L
+    private val treeBuilder: TreeBuilder
+    private val staticTree: Map<String, List<String>>?
+    private var treeBuilderTimer = -1L
 
     init {
         val channelProps = Properties()
@@ -76,7 +85,7 @@ class Manager(private val selfAddress: Inet4Address, config: Config) : GenericPr
 
 
         registerTimerHandler(BroadcastTimer.TIMER_ID, this::onBroadcastTimer)
-        registerTimerHandler(ChildTimer.ID, this::onChildTimer)
+        registerTimerHandler(TreeBuilderTimer.ID, this::onTreeBuilderTimer)
 
         region = config.region
         regionalDatacenter = config.datacenter
@@ -84,6 +93,12 @@ class Manager(private val selfAddress: Inet4Address, config: Config) : GenericPr
 
         broadcastInterval = config.man_broadcast_interval
         membershipExpiration = broadcastInterval * 3
+
+        treeBuilder = TreeBuilder.valueOf(config.tree_builder)
+        staticTree = if (treeBuilder == TreeBuilder.Static)
+            Yaml.default.decodeFromStream<Map<String, List<String>>>(FileInputStream(config.tree_build_static_location))
+        else
+            null
 
         membership = mutableMapOf()
 
@@ -108,15 +123,16 @@ class Manager(private val selfAddress: Inet4Address, config: Config) : GenericPr
         state = State.ACTIVE
         sendRequest(BroadcastRequest(BroadcastState(selfAddress, location, resources, state)), HyParFlood.ID)
 
-        childTimer = setupPeriodicTimer(ChildTimer(), 5000, 10000)
+        treeBuilderTimer =
+            setupPeriodicTimer(TreeBuilderTimer(), config.tree_builder_interval, config.tree_builder_interval)
     }
 
-    private fun onDeactivate(){
+    private fun onDeactivate() {
         state = State.INACTIVE
         sendRequest(BroadcastRequest(BroadcastState(selfAddress, location, resources, state)), HyParFlood.ID)
-        if(childTimer!=-1L){
-            cancelTimer(childTimer)
-            childTimer = -1
+        if (treeBuilderTimer != -1L) {
+            cancelTimer(treeBuilderTimer)
+            treeBuilderTimer = -1
         }
     }
 
@@ -128,17 +144,32 @@ class Manager(private val selfAddress: Inet4Address, config: Config) : GenericPr
             logger.warn("Received wake message while not dormant, ignoring")
     }
 
-    private fun onChildTimer(timer: ChildTimer, timerId: Long) {
+    private fun onTreeBuilderTimer(timer: TreeBuilderTimer, timerId: Long) {
         if (state == State.INACTIVE)
             return
 
-        val sortedFilter = membership.filterValues { it.first.state == State.INACTIVE }
-            .toSortedMap(compareBy { it.hostAddress })
-        if (!sortedFilter.isEmpty()) {
-            val toWake = Host(sortedFilter.keys.first(), PORT)
-            logger.info("Waking up $toWake")
-            openConnection(toWake)
-            sendMessage(WakeMessage(selfAddress), toWake)
+        if (treeBuilder == TreeBuilder.Random) {
+            val sortedFilter = membership.filterValues { it.first.state == State.INACTIVE }
+                .toSortedMap(compareBy { it.hostAddress })
+            if (!sortedFilter.isEmpty()) {
+                val toWake = Host(sortedFilter.keys.first(), PORT)
+                logger.info("Waking up $toWake")
+                openConnection(toWake)
+                sendMessage(WakeMessage(selfAddress), toWake)
+            }
+        } else { //Static tree
+            if (staticTree!!.containsKey(config.hostname)) {
+                for (host in staticTree[config.hostname]!!) {
+                    val toWake = Host(Inet4Address.getByName(host), PORT)
+                    if (membership.containsKey(toWake.address)
+                        && membership[toWake.address]!!.first.state == State.INACTIVE
+                    ) {
+                        logger.info("Waking up $toWake")
+                        openConnection(toWake)
+                        sendMessage(WakeMessage(selfAddress), toWake)
+                    }
+                }
+            }
         }
     }
 
