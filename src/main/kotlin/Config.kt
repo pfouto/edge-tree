@@ -35,9 +35,16 @@ class Config(properties: Properties) {
         const val TREE_PROPAGATE_TIMEOUT_KEY = "propagate_timeout"
         const val TREE_PROPAGATE_TIMEOUT_DEFAULT = "2000"
 
+        // Storage
+        const val DC_STORAGE_TYPE_KEY = "dc_storage_type"
+        const val DC_STORAGE_TYPE_DEFAULT = "in_memory" // "in_memory" or "cassandra"
+        const val NODE_STORAGE_TYPE_KEY = "node_storage_type"
+        const val NODE_STORAGE_TYPE_DEFAULT = "in_memory"
+
         // General
         const val HOSTNAME_KEY = "hostname"
         const val IP_ADDR_KEY = "address"
+
 
         /*const val HPF_PORT_KEY = "hpf_port"
         const val HPF_PORT_DEFAULT = "2000"
@@ -66,6 +73,9 @@ class Config(properties: Properties) {
 
     val tree_reconnect_timeout: Long
     val tree_propagate_timeout: Long
+
+    val dc_storage_type: String
+    val node_storage_type: String
 
     val hostname: String
     val ip_addr: String
@@ -96,6 +106,8 @@ class Config(properties: Properties) {
         tree_propagate_timeout =
             properties.getProperty(TREE_PROPAGATE_TIMEOUT_KEY, TREE_PROPAGATE_TIMEOUT_DEFAULT).toLong()
 
+        dc_storage_type = properties.getProperty(DC_STORAGE_TYPE_KEY, DC_STORAGE_TYPE_DEFAULT)
+        node_storage_type = properties.getProperty(NODE_STORAGE_TYPE_KEY, NODE_STORAGE_TYPE_DEFAULT)
 
         hostname = properties.getProperty(HOSTNAME_KEY)
         ip_addr = properties.getProperty(IP_ADDR_KEY)

@@ -6,34 +6,22 @@ import org.apache.cassandra.config.YamlConfigurationLoader
 import org.apache.cassandra.cql3.QueryProcessor
 import org.apache.cassandra.db.ConsistencyLevel
 import org.apache.cassandra.io.util.File
-import org.apache.cassandra.service.CassandraDaemon
 import org.apache.cassandra.service.EmbeddedCassandraService
 import org.apache.logging.log4j.LogManager
-import java.net.Inet4Address
 import java.net.URL
 import java.util.*
 
-class CassandraWrapper(address: Inet4Address) {
+class CassandraWrapper() : StorageWrapper{
 
     companion object {
         private val logger = LogManager.getLogger()
     }
 
-    private val cassandraConfigMap: Map<String, Any>
-
-    init{
-        cassandraConfigMap = mapOf<String, Any>(
-            "cluster_name" to "Test Cluster",
-            "listen_address" to address.hostAddress,
-        )
-
-    }
-
-    private val daemon: CassandraDaemon = CassandraDaemon(true)
-
     private var cassandra: EmbeddedCassandraService? = null
 
-    fun initialize() {
+    override fun initialize() {
+
+        logger.info("Instantiating cassandra")
 
         val config = YamlConfigurationLoader().loadConfig(URL("file:./cassandra.yaml"))
         Config.setOverrideLoadConfig { config }
@@ -41,16 +29,38 @@ class CassandraWrapper(address: Inet4Address) {
 
         System.setProperty("cassandra.storagedir", "/tmp/cassandra")
 
+        //cleanupDirectory("/tmp/cassandra/")
+
+
         DatabaseDescriptor.daemonInitialization()
         mkdirs()
-        //cleanup()
+        cleanup()
         cassandra = EmbeddedCassandraService()
         cassandra!!.start()
 
+        logger.info("Creating cassandra schema")
+
+        createSchema()
         //daemon.destroyClientTransports()
+
+        logger.info("Cassandra instantiated")
+
     }
 
-    fun createSchema() {
+    override fun put(key: String, value: String) {
+        TODO("Not yet implemented")
+    }
+
+    override fun get(key: String): String? {
+        TODO("Not yet implemented")
+    }
+
+    override fun delete(key: String) {
+        TODO("Not yet implemented")
+    }
+
+
+    private fun createSchema() {
         //TODO create keyspace and tables
 
         logger.info(
@@ -67,11 +77,8 @@ class CassandraWrapper(address: Inet4Address) {
         )
     }
 
-    fun terminate() {
-        if (cassandra != null) {
-            cassandra!!.stop()
-            logger.info("Done")
-        }
+    private fun mkdirs() {
+        DatabaseDescriptor.createAllDirectories()
     }
 
     private fun cleanup() {
@@ -96,10 +103,6 @@ class CassandraWrapper(address: Inet4Address) {
         if (directory.exists()) {
             Arrays.stream(directory.tryList()).forEach { obj: File -> obj.deleteRecursive() }
         }
-    }
-
-    private fun mkdirs() {
-        DatabaseDescriptor.createAllDirectories()
     }
 
     private fun cleanupSavedCaches() {

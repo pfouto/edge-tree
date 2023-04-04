@@ -8,21 +8,23 @@ import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import java.net.Inet4Address
 import java.util.*
 
-class Storage(address: Inet4Address, config: Config) : GenericProtocol(NAME, ID) {
+class Storage(address: Inet4Address, private val config: Config) : GenericProtocol(NAME, ID) {
 
     companion object {
         const val NAME = "Storage"
         const val ID: Short = 500
 
+        const val CASSANDRA_TYPE = "cassandra"
+        const val IN_MEMORY_TYPE = "in_memory"
+
         private val logger = LogManager.getLogger()
     }
 
-    private val storageProxy: CassandraWrapper = CassandraWrapper(address)
+    private var storageWrapper: StorageWrapper? = null
 
     init {
         subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
         subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
-
 
     }
 
@@ -31,17 +33,14 @@ class Storage(address: Inet4Address, config: Config) : GenericProtocol(NAME, ID)
     }
 
     private fun onActivate(notification: ActivateNotification) {
-        logger.info("Instantiating cassandra")
-        storageProxy.initialize()
-        logger.info("Creating schema")
-        storageProxy.createSchema()
+        storageWrapper = if(notification.contact != null) //datacenter
+            if(config.dc_storage_type == CASSANDRA_TYPE) CassandraWrapper() else InMemoryWrapper()
+        else // node
+            if(config.node_storage_type == CASSANDRA_TYPE) CassandraWrapper() else InMemoryWrapper()
+        storageWrapper!!.initialize()
     }
 
     private fun onDeactivate(){
-        logger.info("Storage Deactivating")
+        logger.info("Storage Deactivating (nothing)")
     }
-
-
-
-
 }
