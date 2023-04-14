@@ -47,15 +47,19 @@ class CassandraWrapper() : StorageWrapper{
 
     }
 
-    override fun put(key: String, value: String) {
+    override fun put(partition: String, key: String, value: ByteArray) {
         TODO("Not yet implemented")
     }
 
-    override fun get(key: String): String? {
+    override fun get(partition: String, key: String): ByteArray? {
         TODO("Not yet implemented")
     }
 
-    override fun delete(key: String) {
+    override fun delete(partition: String, key: String): ByteArray? {
+        TODO("Not yet implemented")
+    }
+
+    override fun cleanUp() {
         TODO("Not yet implemented")
     }
 

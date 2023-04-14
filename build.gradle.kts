@@ -47,9 +47,9 @@ kotlin { // Extension for easy setup
 
 tasks {
     shadowJar {
-        // defaults to project.name
-        archiveBaseName.set("../../deploy/${project.name}-fat")
-        // defaults to all, so removing this overrides the normal, non-fat jar
+        archiveBaseName.set("../../deploy/${project.name}")
         archiveClassifier.set("")
+        archiveVersion.set("")
+
     }
 }

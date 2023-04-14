@@ -11,7 +11,6 @@ data class WriteOperation(
     val partition: String,
     val key: String,
     val value: ByteArray,
-    val hlc: HybridTimestamp,
     val persistence: Short,
 ) : Operation(WRITE) {
 
@@ -24,7 +23,6 @@ data class WriteOperation(
         if (partition != other.partition) return false
         if (key != other.key) return false
         if (!value.contentEquals(other.value)) return false
-        if (hlc != other.hlc) return false
         return persistence == other.persistence
     }
 
@@ -32,7 +30,6 @@ data class WriteOperation(
         var result = partition.hashCode()
         result = 31 * result + key.hashCode()
         result = 31 * result + value.contentHashCode()
-        result = 31 * result + hlc.hashCode()
         result = 31 * result + persistence
         return result
     }
@@ -62,7 +59,6 @@ abstract class Operation(val type: Short) {
                     out.writeCharSequence(msg.key, Charsets.UTF_8)
                     out.writeInt(msg.value.size)
                     out.writeBytes(msg.value)
-                    HybridTimestamp.Serializer.serialize(msg.hlc, out)
                     out.writeShort(msg.persistence.toInt())
                 }
 
@@ -88,9 +84,8 @@ abstract class Operation(val type: Short) {
                     val valueSize = buff.readInt()
                     val value = ByteArray(valueSize)
                     buff.readBytes(value)
-                    val hlc = HybridTimestamp.Serializer.deserialize(buff)
                     val persistence = buff.readShort()
-                    WriteOperation(partition, key, value, hlc, persistence)
+                    WriteOperation(partition, key, value, persistence)
                 }
 
                 MIGRATION -> {

@@ -12,7 +12,7 @@ class OpRequest(val id: Long, val op: Operation) : ProtoRequest(ID) {
     }
 }
 
-class OpReply(val id: Long, val hlc: HybridTimestamp, val data: ByteArray?) : ProtoReply(ID) {
+class OpReply(val id: Long, val hlc: HybridTimestamp?, val data: ByteArray?) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 402
     }

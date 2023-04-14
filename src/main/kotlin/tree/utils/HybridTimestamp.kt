@@ -7,7 +7,7 @@ import pt.unl.fct.di.novasys.network.ISerializer
 class HybridTimestamp(val logical: Long = 0, val counter: Int = 0) {
 
     fun nextTs(): HybridTimestamp {
-        val newLogical = Math.max(logical, getTimeMillis())
+        val newLogical = logical.coerceAtLeast(getTimeMillis())
         val newCounter = if (logical == newLogical) counter + 1 else 0
         return HybridTimestamp(newLogical, newCounter)
     }
