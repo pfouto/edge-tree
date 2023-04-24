@@ -8,7 +8,7 @@ import proxy.utils.MigrationOperation
 import proxy.utils.ReadOperation
 import proxy.utils.WriteOperation
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
-import tree.Tree
+import pt.unl.fct.di.novasys.network.data.Host
 import tree.TreeProto
 import tree.utils.HybridTimestamp
 import java.net.Inet4Address
@@ -29,23 +29,27 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private val lww = address.hashCode()
 
+    private var storageWrapper: StorageWrapper? = null
+
     private val localData = mutableMapOf<String, MutableMap<String, ObjectState>>()
-    //Sorted list of pending migrations (sorted by timestamp)
-    //private val pendingMigrations =
 
     private val pendingPersistence = mutableMapOf<Int, MutableList<Long>>()
 
-    private var storageWrapper: StorageWrapper? = null
+    //Sorted list of pending migrations (sorted by timestamp)
+    // TODO private val pendingMigrations =
+
 
     init {
         subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
         subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
 
         registerRequestHandler(OpRequest.ID) { req: OpRequest, _ -> onLocalOpRequest(req) }
+        registerRequestHandler(ChildReplicationRequest.ID) { req: ChildReplicationRequest, _ -> onChildReplication(req) }
         registerReplyHandler(PropagateWriteReply.ID) { rep: PropagateWriteReply, _ -> onRemoteWrite(rep.write) }
-        registerReplyHandler(ReplicationReply.ID) { rep: ReplicationReply, _ -> onReplicationReply(rep) }
+        registerReplyHandler(LocalReplicationReply.ID) { rep: LocalReplicationReply, _ -> onReplicationReply(rep) }
         registerReplyHandler(PersistenceUpdate.ID) { rep: PersistenceUpdate, _ -> onPersistence(rep) }
     }
+
 
     override fun init(props: Properties) {
 
@@ -59,8 +63,29 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         storageWrapper!!.initialize()
     }
 
-    private fun onReplicationReply(rep: ReplicationReply) {
-        val newValue = if (rep.obj != null)
+    private fun onChildReplication(req: ChildReplicationRequest) {
+        val partition = localData.computeIfAbsent(req.partition) { mutableMapOf() }
+
+        when (val obj = partition[req.key]) {
+            null -> {
+                sendRequest(LocalReplicationRequest(req.partition, req.key), TreeProto.ID)
+                val newState = Pending()
+                newState.pendingReplications.add(req.child)
+                partition[req.key] = newState
+            }
+            is Pending -> {
+                obj.pendingReplications.add(req.child)
+            }
+            is Present -> {
+                val dataObj = storageWrapper!!.get(req.partition, req.key)
+                sendReply(ChildReplicationReply(req.child, req.partition, req.key, dataObj), ClientProxy.ID)
+            }
+
+        }
+    }
+
+    private fun onReplicationReply(rep: LocalReplicationReply) {
+        val newValue: DataObject? = if (rep.obj != null)
             storageWrapper!!.put(rep.partition, rep.key, rep.obj)
         else
             storageWrapper!!.get(rep.partition, rep.key)
@@ -68,10 +93,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         val partition = localData[rep.partition]!!
         val pending = partition[rep.key]!! as Pending
 
-
         for (id in pending.pendingReads) {
             if (newValue == null) sendReply(OpReply(id, null, null), ClientProxy.ID)
             else sendReply(OpReply(id, newValue.hlc, newValue.value), ClientProxy.ID)
+        }
+
+        for (child in pending.pendingReplications) {
+            sendReply(ChildReplicationReply(child, rep.partition, rep.key, newValue), TreeProto.ID)
         }
 
         partition[rep.key] = Present()
@@ -96,8 +124,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 //Check if available locally, if not, send replication request to tree
                 val partition = localData.computeIfAbsent(req.op.partition) { mutableMapOf() }
                 partition.computeIfAbsent(req.op.key) {
-                    sendRequest(ReplicationRequest(req.op.partition, req.op.key), TreeProto.ID)
-                    Pending(System.currentTimeMillis())
+                    sendRequest(LocalReplicationRequest(req.op.partition, req.op.key), TreeProto.ID)
+                    Pending()
                 }
 
                 //Ask tree to propagate write
@@ -106,7 +134,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                     TreeProto.ID
                 )
 
-                //if persistency, also add to pending (different from read and migration pending)
+                //if persistence, also add to pending (different from read and migration pending)
                 if (req.op.persistence > 0) {
                     if (req.op.persistence == 1.toShort())
                         sendReply(ClientWritePersistent(req.id), ClientProxy.ID)
@@ -119,8 +147,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 //Check if available locally, if not, send replication request to tree
                 val partition = localData.computeIfAbsent(req.op.partition) { mutableMapOf() }
                 val objState = partition.computeIfAbsent(req.op.key) {
-                    sendRequest(ReplicationRequest(req.op.partition, req.op.key), TreeProto.ID)
-                    Pending(System.currentTimeMillis())
+                    sendRequest(LocalReplicationRequest(req.op.partition, req.op.key), TreeProto.ID)
+                    Pending()
                 }
 
                 //Execute if present, or add to pending if not
@@ -177,8 +205,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
 abstract class ObjectState
 
-class Pending(val timestamp: Long) : ObjectState() {
+class Pending : ObjectState() {
     val pendingReads = mutableListOf<Long>()
+    val pendingReplications = mutableListOf<Host>()
 }
 
 class Present : ObjectState()

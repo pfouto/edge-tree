@@ -166,7 +166,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
     /* ------------------------------- CHILD HANDLERS ------------------------------------------- */
     override fun onChildConnected(child: Host) {
-        children[child] = ChildState(child)
+        children[child] = ChildSync(child)
         logger.info("CHILD SYNC $child")
         if (state is Inactive) {
             sendMessage(Reject(), child, TCPChannel.CONNECTION_IN)
@@ -176,18 +176,18 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
     override fun onSyncRequest(child: Host, msg: SyncRequest) {
         val childState = children[child]!!
-        if (childState.state != ChildState.State.SYNC)
+        if (childState !is ChildSync)
             throw AssertionError("Sync message while already synced $child")
 
         updateTsAndStableTs()
         sendMessage(SyncResponse(buildReconfigurationMessage(), ByteArray(0)), child, TCPChannel.CONNECTION_IN)
-        childState.state = ChildState.State.READY
+        children[child] = ChildReady(child)
         logger.info("CHILD READY $child")
         onUpstream(child, msg.upstream)
     }
 
     override fun onUpstream(child: Host, msg: Upstream) {
-        children[child]!!.childStableTime = msg.ts
+        (children[child]!! as ChildReady).childStableTime = msg.ts
         logger.info("CHILD-METADATA $child ${msg.ts}")
     }
 
@@ -205,7 +205,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         if (state is ParentReady || state is Datacenter) {
             val downstream = buildDownstreamMessage()
             for (childState in children.values) {
-                if (childState.state == ChildState.State.READY)
+                if (childState is ChildReady)
                     sendMessage(downstream, childState.child, TCPChannel.CONNECTION_IN)
             }
         }
@@ -237,7 +237,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     private fun updateTsAndStableTs() {
         timestamp = timestamp.updatedTs()
         var newStable = timestamp
-        for (child in children.values)
+        for (child in children.values.filterIsInstance<ChildReady>())
             newStable = child.childStableTime.min(newStable)
         stableTimestamp = newStable
     }

@@ -1,18 +1,12 @@
 package tree.utils
 
-import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.network.data.Host
 
-class ChildState(val child: Host) {
-    enum class State {
-        SYNC, READY
-    }
+abstract class ChildState(val child: Host)
 
-    companion object {
-        private val logger = LogManager.getLogger()
-    }
+class ChildSync(child: Host) : ChildState(child)
 
-    var childStableTime: HybridTimestamp = HybridTimestamp()
-    var state: State = State.SYNC
+class ChildReady(child: Host, var childStableTime: HybridTimestamp = HybridTimestamp()) : ChildState(child)
 
-}
+
+
