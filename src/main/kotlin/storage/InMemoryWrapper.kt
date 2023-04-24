@@ -16,9 +16,9 @@ class InMemoryWrapper : StorageWrapper {
         logger.info("In memory storage initialized")
     }
 
-    override fun put(partitionKey: String, key: String, dataObject: DataObject) {
+    override fun put(partitionKey: String, key: String, dataObject: DataObject): DataObject {
         val partition = data.computeIfAbsent(partitionKey) { mutableMapOf() }
-
+        return partition.merge(key, dataObject) { old, new -> if (new.hlc.isAfter(old.hlc)) new else old }!!
     }
 
     override fun get(partitionKey: String, key: String): DataObject? {

@@ -4,12 +4,14 @@ import tree.utils.HybridTimestamp
 
 interface StorageWrapper {
     fun initialize()
-    fun put(partitionKey: String, key: String, dataObject: DataObject)
+    fun put(partitionKey: String, key: String, dataObject: DataObject): DataObject
     fun get(partitionKey: String, key: String): DataObject?
     fun delete(partitionKey: String, key: String): DataObject?
     fun cleanUp()
 
 }
+
+data class RemoteWrite(val partition: String, val key: String, val dataObject: DataObject)
 
 data class DataObject(val value: ByteArray, val hlc: HybridTimestamp, val lww: Int) {
     override fun equals(other: Any?): Boolean {
