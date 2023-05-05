@@ -27,7 +27,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         private val logger = LogManager.getLogger()
     }
 
-    private val lww = address.hashCode()
+    private val lww: Int = address.hashCode()
 
     private var storageWrapper: StorageWrapper? = null
 
