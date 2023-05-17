@@ -17,6 +17,8 @@ import kotlin.system.exitProcess
 
 class Storage(val address: Inet4Address, private val config: Config) : GenericProtocol(NAME, ID) {
 
+    //TODO if datacenter, persistence is instant and localData checks are not needed
+
     companion object {
         const val NAME = "Storage"
         const val ID: Short = 500
@@ -35,9 +37,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private val pendingPersistence = mutableMapOf<Int, MutableList<Long>>()
 
-    //Sorted list of pending migrations (sorted by timestamp)
+    //Sorted list of pending migrations (sorted by timestamp and level)
     // TODO private val pendingMigrations =
-
 
     init {
         subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
@@ -63,6 +64,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         storageWrapper!!.initialize()
     }
 
+    /**
+     * A child node is requesting a data object
+     */
     private fun onChildReplication(req: ChildReplicationRequest) {
         val partition = localData.computeIfAbsent(req.partition) { mutableMapOf() }
 
@@ -84,6 +88,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
     }
 
+    /**
+     * A parent node sent us a requested data object
+     */
     private fun onReplicationReply(rep: LocalReplicationReply) {
         val newValue: DataObject? = if (rep.obj != null)
             storageWrapper!!.put(rep.partition, rep.key, rep.obj)
@@ -172,6 +179,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
     }
 
+    /**
+     * A persistence update was received from the tree
+     */
     private fun onPersistence(rep: PersistenceUpdate) {
         rep.persistenceMap.forEach { (persistenceLevel, id) ->
             val pending = pendingPersistence[persistenceLevel]

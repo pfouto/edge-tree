@@ -1,8 +1,7 @@
 package tree
 
 import Config
-import ipc.ActivateNotification
-import ipc.DeactivateNotification
+import ipc.*
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
@@ -110,6 +109,19 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
 
         registerTimerHandler(ReconnectTimer.ID) { timer: ReconnectTimer, _ -> openConnection(timer.node) }
         registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> propagateTime() }
+
+        registerRequestHandler(LocalReplicationRequest.ID) { req: LocalReplicationRequest, _ ->
+            onLocalReplicationRequest(req)
+        }
+
+        registerReplyHandler(ChildReplicationReply.ID) { reply: ChildReplicationReply, _ ->
+            onChildReplicationReply(reply)
+        }
+
+        registerRequestHandler(PropagateWriteRequest.ID) { req: PropagateWriteRequest, _ ->
+            onPropagateWriteRequest(req)
+        }
+
     }
 
     override fun init(props: Properties) {
@@ -120,17 +132,25 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
 
     abstract fun onActivate(notification: ActivateNotification)
     abstract fun onDeactivate()
+
     abstract fun parentConnected(host: Host)
+    abstract fun parentConnectionLost(host: Host, cause: Throwable?)
+    abstract fun parentConnectionFailed(host: Host, cause: Throwable?)
+    abstract fun onChildConnected(child: Host)
+    abstract fun onChildDisconnected(child: Host)
+
     abstract fun onParentSyncResponse(host: Host, msg: SyncResponse)
     abstract fun onReconfiguration(host: Host, reconfiguration: Reconfiguration)
     abstract fun onDownstream(host: Host, msg: Downstream)
-    abstract fun parentConnectionLost(host: Host, cause: Throwable?)
-    abstract fun parentConnectionFailed(host: Host, cause: Throwable?)
     abstract fun onReject(host: Host)
-    abstract fun onChildConnected(child: Host)
     abstract fun onSyncRequest(child: Host, msg: SyncRequest)
     abstract fun onUpstream(child: Host, msg: Upstream)
-    abstract fun onChildDisconnected(child: Host)
+
     abstract fun propagateTime()
     abstract fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable)
+
+    //Storage connection
+    abstract fun onLocalReplicationRequest(request: LocalReplicationRequest)
+    abstract fun onChildReplicationReply(reply: ChildReplicationReply)
+    abstract fun onPropagateWriteRequest(request: PropagateWriteRequest)
 }

@@ -2,8 +2,7 @@ package tree
 
 import Config
 import getTimeMillis
-import ipc.ActivateNotification
-import ipc.DeactivateNotification
+import ipc.*
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
@@ -57,50 +56,57 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     }
 
     /* ------------------------------- PARENT HANDLERS ------------------------------------------- */
-    private fun newParent(parent: Host, backups: List<Host> = mutableListOf()) {
-        state = ParentConnecting(parent, backups)
+    private fun newParent(
+        parent: Host,
+        backups: List<Host> = mutableListOf(),
+        dataRequests: MutableSet<Pair<String, String>> = mutableSetOf(),
+    ) {
+        state = ParentConnecting(parent, backups, dataRequests)
         openConnection(parent)
     }
 
     override fun parentConnected(host: Host) {
-        assertOrExit(state is ParentConnecting, "ConnectionUp while not connecting: $state")
-        parentMatchesOrExit(host)
+        val oldState = state as ParentConnecting
+        assertOrExit(host == oldState.parent, "Parent mismatch")
+        state = ParentSync.fromConnecting(oldState)
 
-        state = ParentSync(host, (state as ParentConnecting).grandparents)
         updateTsAndStableTs()
-        sendMessage(SyncRequest(Upstream(stableTimestamp), mutableListOf()), host, TCPChannel.CONNECTION_OUT)
+        //TODO get list of all data from storage (probably have to track it here too)
+        sendMessage(SyncRequest(Upstream(stableTimestamp), mutableSetOf()), host, TCPChannel.CONNECTION_OUT)
     }
 
     override fun onParentSyncResponse(host: Host, msg: SyncResponse) {
-        assertOrExit(state is ParentSync, "Sync resp while not sync $state")
-        parentMatchesOrExit(host)
+        val oldState = state as ParentSync
+        assertOrExit(host == oldState.parent, "Parent mismatch")
 
-        state = ParentReady(host, emptyList(), emptyList())
+        state = ParentReady(host, emptyList(), emptyList(), oldState.dataRequests)
         onReconfiguration(host, msg.reconfiguration)
+
+        //TODO re-request data to new (or not) parent
+
     }
 
     override fun onReconfiguration(host: Host, reconfiguration: Reconfiguration) {
-        assertOrExit(state is ParentReady, "Reconfiguration while not ready $state")
-        parentMatchesOrExit(host)
+        val oldState = state as ParentReady
+        assertOrExit(host == oldState.parent, "Parent mismatch")
 
         val metadata = mutableListOf<Metadata>()
         for (i in 0 until reconfiguration.grandparents.size + 1)
             metadata.add(Metadata(HybridTimestamp()))
 
-        state = ParentReady(host, reconfiguration.grandparents, metadata)
+        state = ParentReady(host, reconfiguration.grandparents, metadata, oldState.dataRequests)
 
         onDownstream(host, reconfiguration.downstream)
 
-        val reconfigMsg = buildReconfigurationMessage()
+        val reconfigurationMessage = buildReconfigurationMessage()
         for (childState in children.values)
-            sendMessage(reconfigMsg, childState.child, TCPChannel.CONNECTION_IN)
+            sendMessage(reconfigurationMessage, childState.child, TCPChannel.CONNECTION_IN)
     }
 
     override fun onDownstream(host: Host, msg: Downstream) {
-        assertOrExit(state is ParentReady, "DownstreamMetadata while not ready $state")
-        parentMatchesOrExit(host)
-
         val ready = state as ParentReady
+        assertOrExit(host == ready.parent, "Parent mismatch")
+
         assertOrExit(msg.timestamps.size == ready.grandparents.size + 1, "Wrong number of timestamps")
         assertOrExit(msg.timestamps.size == ready.metadata.size, "Wrong number of timestamps")
 
@@ -111,22 +117,22 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     }
 
     override fun parentConnectionLost(host: Host, cause: Throwable?) {
-        assertOrExit(state is ParentSync || state is ParentReady, "Connection lost while not connected  $state")
-        parentMatchesOrExit(host)
-
         val some = state as Node
+        assertOrExit(some is ParentSync || some is ParentReady, "Connection lost while not connected  $some")
+        assertOrExit(host == some.parent, "Parent mismatch")
+
         logger.warn("Connection lost to parent $host: $cause, reconnecting")
-        state = ParentConnecting(some.parent, some.grandparents)
+        state = ParentConnecting(some.parent, some.grandparents, some.dataRequests)
         openConnection(some.parent)
     }
 
     override fun parentConnectionFailed(host: Host, cause: Throwable?) {
-        assertOrExit(state is ParentConnecting, "Connection failed while not connecting $state")
-        parentMatchesOrExit(host)
+        val old = state as ParentConnecting
+        assertOrExit(host == old.parent, "Parent mismatch")
+
         logger.warn("Connection failed to parent $host: $cause")
-        val connecting = state as ParentConnecting
-        if (connecting.retries < MAX_RECONNECT_RETRIES) {
-            state = ParentConnecting(connecting.parent, connecting.grandparents, connecting.retries + 1)
+        if (old.retries < MAX_RECONNECT_RETRIES) {
+            state = ParentConnecting(old.parent, old.grandparents, old.dataRequests, old.retries + 1)
             openConnection(host)
             logger.info("Reconnecting to parent $host, retry ${(state as ParentConnecting).retries}")
         } else {
@@ -135,12 +141,10 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     }
 
     override fun onReject(host: Host) {
-        assertOrExit(state is Node, "Reject while no parent $state")
-        parentMatchesOrExit(host)
-
         val connected = state as ConnectedNode
-        closeConnection(connected.parent)
+        assertOrExit(host == connected.parent, "Parent mismatch")
 
+        closeConnection(connected.parent)
         tryNextParentOrQuit()
     }
 
@@ -233,7 +237,6 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         return Reconfiguration(grandparents, buildDownstreamMessage())
     }
 
-
     private fun updateTsAndStableTs() {
         timestamp = timestamp.updatedTs()
         var newStable = timestamp
@@ -242,15 +245,28 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         stableTimestamp = newStable
     }
 
-    private fun parentMatchesOrExit(parent: Host) {
-        when (state) {
-            is ParentConnecting -> assertOrExit(parent == (state as ParentConnecting).parent, "Parent mismatch")
-            is ParentSync -> assertOrExit(parent == (state as ParentSync).parent, "Parent mismatch")
-            is ParentReady -> assertOrExit(parent == (state as ParentReady).parent, "Parent mismatch")
-            is Datacenter -> assertOrExit(false, "Parent mismatch")
-            is Inactive -> assertOrExit(false, "Parent mismatch")
-            else -> assertOrExit(false, "Unexpected parent state $state")
+    override fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable) {
+        logger.warn("Message $msg to $to failed: ${cause.localizedMessage}")
+    }
+
+    override fun onLocalReplicationRequest(request: LocalReplicationRequest) {
+        assertOrExit(state !is Datacenter, "Local replication request while in datacenter mode")
+        assertOrExit(state !is Inactive, "Local replication request while inactive")
+
+        val nodeState = state as Node
+        nodeState.dataRequests.add(Pair(request.partition, request.key))
+        when(state){
+            is ParentConnecting, is ParentSync -> {}
+            is ParentReady -> {}
         }
+    }
+
+    override fun onChildReplicationReply(reply: ChildReplicationReply) {
+
+    }
+
+    override fun onPropagateWriteRequest(request: PropagateWriteRequest) {
+
     }
 
     private fun assertOrExit(condition: Boolean, msg: String) {
@@ -260,8 +276,5 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         }
     }
 
-    override fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable) {
-        logger.warn("Message $msg to $to failed: ${cause.localizedMessage}")
-    }
 
 }

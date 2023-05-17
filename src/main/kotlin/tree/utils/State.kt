@@ -26,25 +26,44 @@ class Datacenter : State() {
     }
 }
 
-abstract class Node(val parent: Host, val grandparents: List<Host>) : State()
+abstract class Node(val parent: Host, val grandparents: List<Host>, val dataRequests: MutableSet<Pair<String, String>>) :
+    State()
 
-class ParentConnecting(parent: Host, grandparents: List<Host>, val retries: Int = 1) : Node(parent, grandparents) {
+class ParentConnecting(
+    parent: Host,
+    grandparents: List<Host>,
+    requests: MutableSet<Pair<String, String>>,
+    val retries: Int = 1,
+) : Node(parent, grandparents, requests) {
     override fun toString(): String {
         return "PARENT_CONNECTING $parent $grandparents $retries"
     }
 }
 
-abstract class ConnectedNode(parent: Host, grandparents: List<Host>) : Node(parent, grandparents)
+abstract class ConnectedNode(parent: Host, grandparents: List<Host>, requests: MutableSet<Pair<String, String>>) :
+    Node(parent, grandparents, requests)
 
-class ParentSync(parent: Host, grandparents: List<Host>) :
-    ConnectedNode(parent, grandparents) {
+class ParentSync(parent: Host, grandparents: List<Host>, requests: MutableSet<Pair<String, String>>) :
+    ConnectedNode(parent, grandparents, requests) {
+
+    companion object {
+        fun fromConnecting(connecting: ParentConnecting): ParentSync {
+            return ParentSync(connecting.parent, connecting.grandparents, connecting.dataRequests)
+        }
+    }
+
     override fun toString(): String {
         return "PARENT_SYNC $parent $grandparents"
     }
 }
 
-class ParentReady(parent: Host, grandparents: List<Host>, val metadata: List<Metadata>) :
-    ConnectedNode(parent, grandparents) {
+class ParentReady(
+    parent: Host,
+    grandparents: List<Host>,
+    val metadata: List<Metadata>,
+    requests: MutableSet<Pair<String, String>>,
+) :
+    ConnectedNode(parent, grandparents, requests) {
     override fun toString(): String {
         return "PARENT_READY $parent ${grandparents.joinToString(",", prefix = "[", postfix = "]")}"
     }
