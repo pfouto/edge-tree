@@ -1,10 +1,8 @@
 package tree.messaging.up
 
-import deserializeObjectIdentifierSet
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
-import serializeObjectIdentifierSet
 import storage.ObjectIdentifier
 
 data class SyncRequest(
@@ -23,12 +21,12 @@ data class SyncRequest(
     object Serializer : ISerializer<SyncRequest> {
         override fun serialize(msg: SyncRequest, out: ByteBuf) {
             Upstream.Serializer.serialize(msg.upstream, out)
-            serializeObjectIdentifierSet(msg.objects, out)
+            ObjectIdentifier.serializeSet(msg.objects, out)
         }
 
         override fun deserialize(buff: ByteBuf): SyncRequest {
             val upstream = Upstream.Serializer.deserialize(buff)
-            val items = deserializeObjectIdentifierSet(buff)
+            val items = ObjectIdentifier.deserializeSet(buff)
             return SyncRequest(upstream, items)
         }
     }
