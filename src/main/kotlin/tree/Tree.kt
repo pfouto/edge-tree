@@ -7,11 +7,15 @@ import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.network.data.Host
+import storage.ObjectIdentifier
+import storage.Storage
 import tree.utils.*
 import tree.messaging.down.Downstream
 import tree.messaging.down.Reconfiguration
 import tree.messaging.down.Reject
 import tree.messaging.down.SyncResponse
+import tree.messaging.up.DataReply
+import tree.messaging.up.DataRequest
 import tree.messaging.up.SyncRequest
 import tree.messaging.up.Upstream
 import java.net.Inet4Address
@@ -59,7 +63,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     private fun newParent(
         parent: Host,
         backups: List<Host> = mutableListOf(),
-        dataRequests: MutableSet<Pair<String, String>> = mutableSetOf(),
+        dataRequests: MutableSet<ObjectIdentifier> = mutableSetOf(),
     ) {
         state = ParentConnecting(parent, backups, dataRequests)
         openConnection(parent)
@@ -80,10 +84,11 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         assertOrExit(host == oldState.parent, "Parent mismatch")
 
         state = ParentReady(host, emptyList(), emptyList(), oldState.dataRequests)
+
         onReconfiguration(host, msg.reconfiguration)
 
-        //TODO re-request data to new (or not) parent
-
+        logger.info("Requesting pending data to new parent")
+        sendMessage(DataRequest(oldState.dataRequests.toSet()), oldState.parent, TCPChannel.CONNECTION_OUT)
     }
 
     override fun onReconfiguration(host: Host, reconfiguration: Reconfiguration) {
@@ -183,10 +188,12 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         if (childState !is ChildSync)
             throw AssertionError("Sync message while already synced $child")
 
+        val childObjects = msg.objects.associateWith { ChildObjectState.READY }.toMutableMap()
+        children[child] = ChildReady(child, childObjects)
+        logger.info("CHILD READY $child")
+
         updateTsAndStableTs()
         sendMessage(SyncResponse(buildReconfigurationMessage(), ByteArray(0)), child, TCPChannel.CONNECTION_IN)
-        children[child] = ChildReady(child)
-        logger.info("CHILD READY $child")
         onUpstream(child, msg.upstream)
     }
 
@@ -254,19 +261,59 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         assertOrExit(state !is Inactive, "Local replication request while inactive")
 
         val nodeState = state as Node
-        nodeState.dataRequests.add(Pair(request.partition, request.key))
-        when(state){
-            is ParentConnecting, is ParentSync -> {}
-            is ParentReady -> {}
+
+        val toRequest = mutableSetOf<ObjectIdentifier>()
+        for(objId in request.objectIdentifiers) {
+            if(nodeState.dataRequests.add(objId)){
+                toRequest.add(objId)
+            }
+        }
+
+        if (toRequest.isNotEmpty() && nodeState is ParentReady) {
+            sendMessage(DataRequest(toRequest), nodeState.parent, TCPChannel.CONNECTION_OUT)
         }
     }
 
-    override fun onChildReplicationReply(reply: ChildReplicationReply) {
+    override fun onDataRequest(child: Host, msg: DataRequest) {
+        val childState = children[child]!! as ChildReady
 
+        val toRequest = mutableSetOf<ObjectIdentifier>()
+        msg.items.forEach {
+            if(childState.objects[it] == null) {
+                childState.objects[it] = ChildObjectState.PENDING
+                toRequest.add(it)
+            }
+        }
+        sendRequest(ChildReplicationRequest(child, toRequest), Storage.ID)
     }
 
-    override fun onPropagateWriteRequest(request: PropagateWriteRequest) {
+    override fun onChildReplicationReply(reply: ChildReplicationReply) {
+        val childState = children[reply.child]!! as ChildReady
 
+        reply.objects.forEach {
+            childState.objects[it.objectIdentifier] = ChildObjectState.READY
+        }
+        //TODO flush if pending data exists in childState
+
+        sendMessage(DataReply(reply.objects), reply.child, TCPChannel.CONNECTION_IN)
+    }
+
+    override fun onDataReply(child: Host, msg: DataReply) {
+        val nodeState = state as ParentReady
+
+        msg.items.forEach {
+            val remove = nodeState.dataRequests.remove(it.objectIdentifier)
+            assertOrExit(remove, "Received a data reply for a non-requested item")
+        }
+
+        sendReply(LocalReplicationReply(msg.items), Storage.ID)
+    }
+
+
+    override fun onPropagateWrite(request: PropagateWriteRequest) {
+        //Send to parent always
+        //Send to child only if ready, if pending queue it (?) since this update can be newer than the one being fetched
+        //May this does not happen, and we only need to queue if it comes from another child or a parent... (and not local)
     }
 
     private fun assertOrExit(condition: Boolean, msg: String) {
@@ -275,6 +322,4 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
             exitProcess(1)
         }
     }
-
-
 }

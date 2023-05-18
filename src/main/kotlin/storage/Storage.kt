@@ -68,76 +68,94 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
      * A child node is requesting a data object
      */
     private fun onChildReplication(req: ChildReplicationRequest) {
-        val partition = localData.computeIfAbsent(req.partition) { mutableMapOf() }
 
-        when (val obj = partition[req.key]) {
-            null -> {
-                sendRequest(LocalReplicationRequest(req.partition, req.key), TreeProto.ID)
-                val newState = Pending()
-                newState.pendingReplications.add(req.child)
-                partition[req.key] = newState
-            }
-            is Pending -> {
-                obj.pendingReplications.add(req.child)
-            }
-            is Present -> {
-                val dataObj = storageWrapper!!.get(req.partition, req.key)
-                sendReply(ChildReplicationReply(req.child, req.partition, req.key, dataObj), ClientProxy.ID)
-            }
+        val toRequestParent = mutableSetOf<ObjectIdentifier>()
+        val toRespond = mutableListOf<FetchedObject>()
 
+        req.objectIdentifiers.forEach {
+            val partition = localData.computeIfAbsent(it.partition) { mutableMapOf() }
+            when (val obj = partition[it.key]) {
+                null -> {
+                    toRequestParent.add(it)
+                    val newState = Pending()
+                    newState.pendingReplications.add(req.child)
+                    partition[it.key] = newState
+                }
+
+                is Pending -> {
+                    obj.pendingReplications.add(req.child)
+                }
+
+                is Present -> {
+                    val dataObj = storageWrapper!!.get(it)
+                    toRespond.add(FetchedObject(it, dataObj))
+                }
+
+            }
         }
+        sendReply(ChildReplicationReply(req.child, toRespond), TreeProto.ID)
+        sendRequest(LocalReplicationRequest(toRequestParent), TreeProto.ID)
     }
 
     /**
      * A parent node sent us a requested data object
      */
     private fun onReplicationReply(rep: LocalReplicationReply) {
-        val newValue: DataObject? = if (rep.obj != null)
-            storageWrapper!!.put(rep.partition, rep.key, rep.obj)
-        else
-            storageWrapper!!.get(rep.partition, rep.key)
 
-        val partition = localData[rep.partition]!!
-        val pending = partition[rep.key]!! as Pending
+        rep.objects.forEach {
+            val newValue: DataObject? = if (it.dataObject != null)
+                storageWrapper!!.put(it.objectIdentifier, it.dataObject)
+            else
+                storageWrapper!!.get(it.objectIdentifier)
 
-        for (id in pending.pendingReads) {
-            if (newValue == null) sendReply(OpReply(id, null, null), ClientProxy.ID)
-            else sendReply(OpReply(id, newValue.hlc, newValue.value), ClientProxy.ID)
+            val partition = localData[it.objectIdentifier.partition]!!
+            val pending = partition[it.objectIdentifier.key]!! as Pending
+
+            for (id in pending.pendingReads) {
+                if (newValue == null) sendReply(OpReply(id, null, null), ClientProxy.ID)
+                else sendReply(OpReply(id, newValue.hlc, newValue.value), ClientProxy.ID)
+            }
+
+            val childResponses = mutableMapOf<Host, MutableList<FetchedObject>>()
+            for (child in pending.pendingReplications) {
+                childResponses.computeIfAbsent(child) { mutableListOf() }
+                    .add(FetchedObject(it.objectIdentifier, newValue))
+            }
+            partition[it.objectIdentifier.key] = Present()
+
+            childResponses.forEach { (c, l) ->
+                sendReply(ChildReplicationReply(c, l), TreeProto.ID)
+            }
         }
-
-        for (child in pending.pendingReplications) {
-            sendReply(ChildReplicationReply(child, rep.partition, rep.key, newValue), TreeProto.ID)
-        }
-
-        partition[rep.key] = Present()
     }
 
     private fun onRemoteWrite(write: RemoteWrite) {
         assertOrExit(
-            localData[write.partition]?.get(write.key) != null,
-            "Received write for non-existent object ${write.partition} ${write.key}"
+            localData[write.objectIdentifier.partition]?.get(write.objectIdentifier.key) != null,
+            "Received write for non-existent object ${write.objectIdentifier}"
         )
-        storageWrapper!!.put(write.partition, write.key, write.dataObject)
+        storageWrapper!!.put(write.objectIdentifier, write.dataObject)
     }
 
     private fun onLocalOpRequest(req: OpRequest) {
         when (req.op) {
             is WriteOperation -> {
                 val hlc = currentHlc()
-                val newObj = DataObject(req.op.value, hlc, lww)
-                storageWrapper!!.put(req.op.partition, req.op.key, newObj)
+                val objId = ObjectIdentifier(req.op.partition, req.op.key)
+                val objData = DataObject(req.op.value, hlc, lww)
+                storageWrapper!!.put(objId, objData)
                 sendReply(OpReply(req.id, hlc, null), ClientProxy.ID)
 
                 //Check if available locally, if not, send replication request to tree
                 val partition = localData.computeIfAbsent(req.op.partition) { mutableMapOf() }
                 partition.computeIfAbsent(req.op.key) {
-                    sendRequest(LocalReplicationRequest(req.op.partition, req.op.key), TreeProto.ID)
+                    sendRequest(LocalReplicationRequest(Collections.singleton(objId)), TreeProto.ID)
                     Pending()
                 }
 
                 //Ask tree to propagate write
                 sendRequest(
-                    PropagateWriteRequest(req.id, RemoteWrite(req.op.partition, req.op.key, newObj)),
+                    PropagateWriteRequest(req.id, RemoteWrite(objId, objData)),
                     TreeProto.ID
                 )
 
@@ -152,16 +170,17 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
             is ReadOperation -> {
                 //Check if available locally, if not, send replication request to tree
-                val partition = localData.computeIfAbsent(req.op.partition) { mutableMapOf() }
-                val objState = partition.computeIfAbsent(req.op.key) {
-                    sendRequest(LocalReplicationRequest(req.op.partition, req.op.key), TreeProto.ID)
+                val objId = ObjectIdentifier(req.op.partition, req.op.key)
+                val partition = localData.computeIfAbsent(objId.partition) { mutableMapOf() }
+                val objState = partition.computeIfAbsent(objId.key) {
+                    sendRequest(LocalReplicationRequest(Collections.singleton(objId)), TreeProto.ID)
                     Pending()
                 }
 
                 //Execute if present, or add to pending if not
                 when (objState) {
                     is Present -> {
-                        when (val data = storageWrapper!!.get(req.op.partition, req.op.key)) {
+                        when (val data = storageWrapper!!.get(objId)) {
                             null -> sendReply(OpReply(req.id, null, null), ClientProxy.ID)
                             else -> sendReply(OpReply(req.id, data.hlc, data.value), ClientProxy.ID)
                         }
@@ -221,5 +240,6 @@ class Pending : ObjectState() {
 }
 
 class Present : ObjectState()
+
 
 

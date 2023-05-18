@@ -14,17 +14,17 @@ class InMemoryWrapper : StorageWrapper {
         logger.info("In memory storage initialized")
     }
 
-    override fun put(partitionKey: String, key: String, dataObject: DataObject): DataObject {
-        val partition = data.computeIfAbsent(partitionKey) { mutableMapOf() }
-        return partition.merge(key, dataObject) { old, new -> if (new.hlc.isAfter(old.hlc)) new else old }!!
+    override fun put(objId: ObjectIdentifier, objData: DataObject): DataObject {
+        val partition = data.computeIfAbsent(objId.partition) { mutableMapOf() }
+        return partition.merge(objId.key, objData) { old, new -> if (new.hlc.isAfter(old.hlc)) new else old }!!
     }
 
-    override fun get(partitionKey: String, key: String): DataObject? {
-        return data[partitionKey]?.get(key)
+    override fun get(objId: ObjectIdentifier): DataObject? {
+        return data[objId.partition]?.get(objId.key)
     }
 
-    override fun delete(partitionKey: String, key: String): DataObject? {
-        return data[partitionKey]?.remove(key)
+    override fun delete(objId: ObjectIdentifier): DataObject? {
+        return data[objId.partition]?.remove(objId.key)
     }
 
     override fun cleanUp() {

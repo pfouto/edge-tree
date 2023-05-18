@@ -1,5 +1,7 @@
 package proxy.utils
 
+import decodeUTF8
+import encodeUTF8
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.network.ISerializer
 import pt.unl.fct.di.novasys.network.data.Host
@@ -50,13 +52,13 @@ abstract class Operation(val type: Short) {
             out.writeShort(msg.type.toInt())
             when (msg) {
                 is ReadOperation -> {
-                    out.writeCharSequence(msg.partition, Charsets.UTF_8)
-                    out.writeCharSequence(msg.key, Charsets.UTF_8)
+                    encodeUTF8(msg.partition, out)
+                    encodeUTF8(msg.key, out)
                 }
 
                 is WriteOperation -> {
-                    out.writeCharSequence(msg.partition, Charsets.UTF_8)
-                    out.writeCharSequence(msg.key, Charsets.UTF_8)
+                    encodeUTF8(msg.partition, out)
+                    encodeUTF8(msg.key, out)
                     out.writeInt(msg.value.size)
                     out.writeBytes(msg.value)
                     out.writeShort(msg.persistence.toInt())
@@ -73,14 +75,14 @@ abstract class Operation(val type: Short) {
         override fun deserialize(buff: ByteBuf): Operation {
             return when (val type = buff.readShort()) {
                 READ -> {
-                    val partition = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
-                    val key = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
+                    val partition = decodeUTF8(buff)
+                    val key = decodeUTF8(buff)
                     ReadOperation(partition, key)
                 }
 
                 WRITE -> {
-                    val partition = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
-                    val key = buff.readCharSequence(buff.readableBytes(), Charsets.UTF_8).toString()
+                    val partition = decodeUTF8(buff)
+                    val key = decodeUTF8(buff)
                     val valueSize = buff.readInt()
                     val value = ByteArray(valueSize)
                     buff.readBytes(value)

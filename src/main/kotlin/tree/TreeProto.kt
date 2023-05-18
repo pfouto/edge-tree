@@ -14,6 +14,8 @@ import tree.messaging.down.Downstream
 import tree.messaging.down.Reconfiguration
 import tree.messaging.down.Reject
 import tree.messaging.down.SyncResponse
+import tree.messaging.up.DataReply
+import tree.messaging.up.DataRequest
 import tree.messaging.up.SyncRequest
 import tree.messaging.up.Upstream
 import java.net.Inet4Address
@@ -67,6 +69,8 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         registerMessageSerializer(channel, Downstream.ID, Downstream.Serializer)
         registerMessageSerializer(channel, Reject.ID, Reject.Serializer)
         registerMessageSerializer(channel, Reconfiguration.ID, Reconfiguration.Serializer)
+        registerMessageSerializer(channel, DataRequest.ID, DataRequest.Serializer)
+        registerMessageSerializer(channel, DataReply.ID, DataReply.Serializer)
 
         registerMessageHandler(
             channel,
@@ -104,6 +108,18 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
             { msg: Reconfiguration, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
 
+        registerMessageHandler(
+            channel, DataRequest.ID,
+            { msg: DataRequest, from, _, _ -> onDataRequest(from, msg) },
+            { msg: DataRequest, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+        )
+        registerMessageHandler(
+            channel, DataReply.ID,
+            { msg: DataReply, from, _, _ -> onDataReply(from, msg) },
+            { msg: DataReply, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+        )
+
+
         subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
         subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
 
@@ -119,7 +135,7 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         }
 
         registerRequestHandler(PropagateWriteRequest.ID) { req: PropagateWriteRequest, _ ->
-            onPropagateWriteRequest(req)
+            onPropagateWrite(req)
         }
 
     }
@@ -145,6 +161,8 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
     abstract fun onReject(host: Host)
     abstract fun onSyncRequest(child: Host, msg: SyncRequest)
     abstract fun onUpstream(child: Host, msg: Upstream)
+    abstract fun onDataRequest(child: Host, msg: DataRequest)
+    abstract fun onDataReply(child: Host, msg: DataReply)
 
     abstract fun propagateTime()
     abstract fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable)
@@ -152,5 +170,5 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
     //Storage connection
     abstract fun onLocalReplicationRequest(request: LocalReplicationRequest)
     abstract fun onChildReplicationReply(reply: ChildReplicationReply)
-    abstract fun onPropagateWriteRequest(request: PropagateWriteRequest)
+    abstract fun onPropagateWrite(request: PropagateWriteRequest)
 }

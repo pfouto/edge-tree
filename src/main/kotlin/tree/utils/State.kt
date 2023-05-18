@@ -1,6 +1,7 @@
 package tree.utils
 
 import pt.unl.fct.di.novasys.network.data.Host
+import storage.ObjectIdentifier
 
 abstract class State
 
@@ -26,13 +27,13 @@ class Datacenter : State() {
     }
 }
 
-abstract class Node(val parent: Host, val grandparents: List<Host>, val dataRequests: MutableSet<Pair<String, String>>) :
+abstract class Node(val parent: Host, val grandparents: List<Host>, val dataRequests: MutableSet<ObjectIdentifier>) :
     State()
 
 class ParentConnecting(
     parent: Host,
     grandparents: List<Host>,
-    requests: MutableSet<Pair<String, String>>,
+    requests: MutableSet<ObjectIdentifier>,
     val retries: Int = 1,
 ) : Node(parent, grandparents, requests) {
     override fun toString(): String {
@@ -40,10 +41,10 @@ class ParentConnecting(
     }
 }
 
-abstract class ConnectedNode(parent: Host, grandparents: List<Host>, requests: MutableSet<Pair<String, String>>) :
+abstract class ConnectedNode(parent: Host, grandparents: List<Host>, requests: MutableSet<ObjectIdentifier>) :
     Node(parent, grandparents, requests)
 
-class ParentSync(parent: Host, grandparents: List<Host>, requests: MutableSet<Pair<String, String>>) :
+class ParentSync(parent: Host, grandparents: List<Host>, requests: MutableSet<ObjectIdentifier>) :
     ConnectedNode(parent, grandparents, requests) {
 
     companion object {
@@ -61,7 +62,7 @@ class ParentReady(
     parent: Host,
     grandparents: List<Host>,
     val metadata: List<Metadata>,
-    requests: MutableSet<Pair<String, String>>,
+    requests: MutableSet<ObjectIdentifier>,
 ) :
     ConnectedNode(parent, grandparents, requests) {
     override fun toString(): String {

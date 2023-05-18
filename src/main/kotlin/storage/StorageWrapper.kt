@@ -1,19 +1,86 @@
 package storage
 
+import decodeUTF8
+import encodeUTF8
+import io.netty.buffer.ByteBuf
 import tree.utils.HybridTimestamp
 
 interface StorageWrapper {
     fun initialize()
-    fun put(partitionKey: String, key: String, dataObject: DataObject): DataObject
-    fun get(partitionKey: String, key: String): DataObject?
-    fun delete(partitionKey: String, key: String): DataObject?
+    fun put(objId: ObjectIdentifier, objData: DataObject): DataObject
+    fun get(objId: ObjectIdentifier): DataObject?
+    fun delete(objId: ObjectIdentifier): DataObject?
     fun cleanUp()
-
 }
 
-data class RemoteWrite(val partition: String, val key: String, val dataObject: DataObject)
+data class RemoteWrite(val objectIdentifier: ObjectIdentifier, val dataObject: DataObject)
+
+data class FetchedObject(val objectIdentifier: ObjectIdentifier, val dataObject: DataObject?){
+    companion object{
+        fun serialize(fetchedObject: FetchedObject, out: ByteBuf) {
+            encodeUTF8(fetchedObject.objectIdentifier.partition, out)
+            encodeUTF8(fetchedObject.objectIdentifier.key, out)
+            if (fetchedObject.dataObject == null) {
+                out.writeBoolean(false)
+            } else {
+                out.writeBoolean(true)
+                DataObject.serialize(fetchedObject.dataObject, out)
+            }
+        }
+
+        fun deserialize(buff: ByteBuf): FetchedObject {
+            val partition = decodeUTF8(buff)
+            val key = decodeUTF8(buff)
+            val hasData = buff.readBoolean()
+            val dataObject = if (hasData) DataObject.deserialize(buff) else null
+            return FetchedObject(ObjectIdentifier(partition, key), dataObject)
+        }
+    }
+}
+
+data class ObjectIdentifier(val partition: String, val key: String){
+    companion object{
+        fun serializeSet(set: Set<ObjectIdentifier>, out: ByteBuf) {
+            out.writeInt(set.size)
+            set.forEach {
+                encodeUTF8(it.partition,out)
+                encodeUTF8(it.key, out)
+            }
+        }
+
+        fun deserializeSet(buff: ByteBuf): Set<ObjectIdentifier> {
+            val items = mutableSetOf<ObjectIdentifier>()
+            val size = buff.readInt()
+            for (i in 0 until size) {
+                val partition = decodeUTF8(buff)
+                val key = decodeUTF8(buff)
+                items.add(ObjectIdentifier(partition, key))
+            }
+            return items
+        }
+
+    }
+}
 
 data class DataObject(val value: ByteArray, val hlc: HybridTimestamp, val lww: Int) {
+
+    companion object {
+        fun serialize(obj: DataObject, out: ByteBuf) {
+            out.writeInt(obj.value.size)
+            out.writeBytes(obj.value)
+            HybridTimestamp.Serializer.serialize(obj.hlc, out)
+            out.writeInt(obj.lww)
+        }
+
+        fun deserialize(buff: ByteBuf): DataObject {
+            val value = ByteArray(buff.readInt())
+            buff.readBytes(value)
+            val hlc = HybridTimestamp.Serializer.deserialize(buff)
+            val lww = buff.readInt()
+            return DataObject(value, hlc, lww)
+        }
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false

@@ -3,40 +3,41 @@ package ipc
 import pt.unl.fct.di.novasys.babel.generic.ProtoReply
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 import pt.unl.fct.di.novasys.network.data.Host
-import storage.DataObject
+import storage.FetchedObject
+import storage.ObjectIdentifier
 import storage.RemoteWrite
 
 /**
- * From Storage to Tree requesting a key to be fetched from a parent
+ * From Storage to Tree requesting object(s) to be fetched from a parent
  */
-class LocalReplicationRequest(val partition: String, val key: String) : ProtoRequest(ID) {
+class LocalReplicationRequest(val objectIdentifiers: Set<ObjectIdentifier>) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 201
     }
 }
 
 /**
- * From Tree to Storage with a key that has been previously requested locally
+ * From Tree to Storage with objects(s) that has been previously requested locally
  */
-class LocalReplicationReply(val partition: String, val key: String, val obj: DataObject?) : ProtoReply(ID) {
+class LocalReplicationReply(val objects: List<FetchedObject>) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 202
     }
 }
 
 /**
- * From Tree to Storage requesting a key for a child
+ * From Tree to Storage requesting object(s) for a child
  */
-class ChildReplicationRequest(val child: Host, val partition: String, val key: String) : ProtoRequest(ID) {
+class ChildReplicationRequest(val child: Host, val objectIdentifiers: Set<ObjectIdentifier>) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 203
     }
 }
 
 /**
- * From Storage to Tree with a key that has been previously requested by a child
+ * From Storage to Tree with object(s) that has been previously requested by a child
  */
-class ChildReplicationReply(val child: Host, val partition: String, val key: String, val obj: DataObject?) :
+class ChildReplicationReply(val child: Host, val objects: List<FetchedObject>) :
     ProtoReply(ID) {
     companion object {
         const val ID: Short = 204
