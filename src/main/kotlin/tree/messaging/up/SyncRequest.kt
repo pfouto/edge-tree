@@ -3,11 +3,12 @@ package tree.messaging.up
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
+import storage.DataIndex
 import storage.ObjectIdentifier
 
 data class SyncRequest(
     val upstream: Upstream,
-    val objects: Set<ObjectIdentifier>,
+    val objects: DataIndex,
 ) : ProtoMessage(ID) {
 
     companion object {

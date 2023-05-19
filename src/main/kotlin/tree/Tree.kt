@@ -263,7 +263,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         logger.warn("Message $msg to $to failed: ${cause.localizedMessage}")
     }
 
-    override fun onReplicationRequest(request: ObjReplicationReq) {
+    override fun onObjReplicationRequest(request: ObjReplicationReq) {
         assertOrExit(state !is Datacenter, "Local replication request while in datacenter mode")
         assertOrExit(state !is Inactive, "Local replication request while inactive")
 
@@ -286,6 +286,10 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         }
     }
 
+    override fun onPartitionReplicationRequest(req: PartitionReplicationReq) {
+        TODO("Not yet implemented")
+    }
+
     override fun onDataRequest(child: Host, msg: DataRequest) {
         val childState = children[child]!! as ChildReady
 
@@ -299,7 +303,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         sendRequest(FetchObjectsReq(child, toRequest), Storage.ID)
     }
 
-    override fun onChildReplicationReply(reply: FetchObjectsRep) {
+    override fun onFetchObjectsReply(reply: FetchObjectsRep) {
         val childState = children[reply.child]!! as ChildReady
 
         reply.objects.forEach {
@@ -308,6 +312,10 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         //TODO flush if pending data exists in childState
 
         sendMessage(DataReply(reply.objects), reply.child, TCPChannel.CONNECTION_IN)
+    }
+
+    override fun onFetchPartitionRep(reply: FetchPartitionRep) {
+        TODO("Not yet implemented")
     }
 
     override fun onDataReply(child: Host, msg: DataReply) {

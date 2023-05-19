@@ -126,17 +126,14 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         registerTimerHandler(ReconnectTimer.ID) { timer: ReconnectTimer, _ -> openConnection(timer.node) }
         registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> propagateTime() }
 
-        registerRequestHandler(ObjReplicationReq.ID) { req: ObjReplicationReq, _ ->
-            onReplicationRequest(req)
+        registerRequestHandler(ObjReplicationReq.ID) { req: ObjReplicationReq, _ -> onObjReplicationRequest(req) }
+        registerRequestHandler(PartitionReplicationReq.ID) { req: PartitionReplicationReq, _ ->
+            onPartitionReplicationRequest(req)
         }
+        registerReplyHandler(FetchObjectsRep.ID) { reply: FetchObjectsRep, _ -> onFetchObjectsReply(reply) }
+        registerReplyHandler(FetchPartitionRep.ID) { reply: FetchPartitionRep, _ -> onFetchPartitionRep(reply) }
 
-        registerReplyHandler(FetchObjectsRep.ID) { reply: FetchObjectsRep, _ ->
-            onChildReplicationReply(reply)
-        }
-
-        registerRequestHandler(PropagateWriteRequest.ID) { req: PropagateWriteRequest, _ ->
-            onPropagateWrite(req)
-        }
+        registerRequestHandler(PropagateWriteRequest.ID) { req: PropagateWriteRequest, _ -> onPropagateWrite(req) }
 
     }
 
@@ -168,7 +165,9 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
     abstract fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable)
 
     //Storage connection
-    abstract fun onReplicationRequest(request: ObjReplicationReq)
-    abstract fun onChildReplicationReply(reply: FetchObjectsRep)
+    abstract fun onObjReplicationRequest(request: ObjReplicationReq)
+    abstract fun onPartitionReplicationRequest(req: PartitionReplicationReq)
+    abstract fun onFetchObjectsReply(reply: FetchObjectsRep)
+    abstract fun onFetchPartitionRep(reply: FetchPartitionRep)
     abstract fun onPropagateWrite(request: PropagateWriteRequest)
 }

@@ -65,16 +65,30 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
     }
 
-
     override fun init(props: Properties) {
 
     }
 
     private fun onActivate(notification: ActivateNotification) {
         storageWrapper = if (notification.contact != null) //datacenter
-            if (config.dc_storage_type == CASSANDRA_TYPE) CassandraWrapper() else InMemoryWrapper()
-        else // node
-            if (config.node_storage_type == CASSANDRA_TYPE) CassandraWrapper() else InMemoryWrapper()
+            when (config.dc_storage_type) {
+                CASSANDRA_TYPE -> CassandraWrapper()
+                IN_MEMORY_TYPE -> InMemoryWrapper()
+                else -> {
+                    logger.error("Invalid storage type: ${config.dc_storage_type}")
+                    exitProcess(1)
+                }
+            }
+        else { // node
+            when (config.node_storage_type) {
+                CASSANDRA_TYPE -> CassandraWrapper()
+                IN_MEMORY_TYPE -> InMemoryWrapper()
+                else -> {
+                    logger.error("Invalid storage type: ${config.node_storage_type}")
+                    exitProcess(1)
+                }
+            }
+        }
         storageWrapper!!.initialize()
     }
 
@@ -251,6 +265,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     }
 
     private fun currentHlc(): HybridTimestamp {
+        //Maybe we don't need this... We just need the stable HLC received from the tree to know when to
+        // execute remote ops... Maybe we do to tag writes...
         TODO("Not yet implemented")
     }
 

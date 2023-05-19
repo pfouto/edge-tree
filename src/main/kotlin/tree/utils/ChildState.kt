@@ -1,6 +1,7 @@
 package tree.utils
 
 import pt.unl.fct.di.novasys.network.data.Host
+import storage.DataIndex
 import storage.ObjectIdentifier
 import storage.RemoteWrite
 
@@ -10,18 +11,8 @@ class ChildSync(child: Host) : ChildState(child)
 
 class ChildReady(
     child: Host,
-    //TODO DataIndex
-    val objects: MutableMap<ObjectIdentifier, ChildObjectState>,
-    //TODO pending list with operation queue for pending objects
-    val pendingObjects: Map<ObjectIdentifier, Pair<MutableList<Long>, MutableList<Host>>>,
-    val pendingFullPartitions: Map<String, MutableList<RemoteWrite>>,
-
+    val objects: DataIndex,
+    val pendingObjects: Map<ObjectIdentifier, MutableList<RemoteWrite>> = mutableMapOf(),
+    val pendingFullPartitions: Map<String, MutableList<RemoteWrite>> = mutableMapOf(),
     var childStableTime: HybridTimestamp = HybridTimestamp(),
 ) : ChildState(child)
-
-enum class ChildObjectState {
-    PENDING, READY
-}
-
-
-
