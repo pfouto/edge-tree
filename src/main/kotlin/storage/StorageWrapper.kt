@@ -7,24 +7,25 @@ import tree.utils.HybridTimestamp
 
 interface StorageWrapper {
     fun initialize()
-    fun put(objId: ObjectIdentifier, objData: DataObject): DataObject
-    fun get(objId: ObjectIdentifier): DataObject?
-    fun delete(objId: ObjectIdentifier): DataObject?
+    fun put(objId: ObjectIdentifier, objData: ObjectData): ObjectData
+    fun get(objId: ObjectIdentifier): ObjectData?
+    fun delete(objId: ObjectIdentifier): ObjectData?
     fun cleanUp()
+    fun getFullPartitionData(partition: String): List<Pair<String, ObjectData>>
 }
 
-data class RemoteWrite(val objectIdentifier: ObjectIdentifier, val dataObject: DataObject)
+data class RemoteWrite(val objectIdentifier: ObjectIdentifier, val objectData: ObjectData)
 
-data class FetchedObject(val objectIdentifier: ObjectIdentifier, val dataObject: DataObject?){
+data class FetchedObject(val objectIdentifier: ObjectIdentifier, val objectData: ObjectData?){
     companion object{
         fun serialize(fetchedObject: FetchedObject, out: ByteBuf) {
             encodeUTF8(fetchedObject.objectIdentifier.partition, out)
             encodeUTF8(fetchedObject.objectIdentifier.key, out)
-            if (fetchedObject.dataObject == null) {
+            if (fetchedObject.objectData == null) {
                 out.writeBoolean(false)
             } else {
                 out.writeBoolean(true)
-                DataObject.serialize(fetchedObject.dataObject, out)
+                ObjectData.serialize(fetchedObject.objectData, out)
             }
         }
 
@@ -32,8 +33,8 @@ data class FetchedObject(val objectIdentifier: ObjectIdentifier, val dataObject:
             val partition = decodeUTF8(buff)
             val key = decodeUTF8(buff)
             val hasData = buff.readBoolean()
-            val dataObject = if (hasData) DataObject.deserialize(buff) else null
-            return FetchedObject(ObjectIdentifier(partition, key), dataObject)
+            val objectData = if (hasData) ObjectData.deserialize(buff) else null
+            return FetchedObject(ObjectIdentifier(partition, key), objectData)
         }
     }
 }
@@ -62,22 +63,22 @@ data class ObjectIdentifier(val partition: String, val key: String){
     }
 }
 
-data class DataObject(val value: ByteArray, val hlc: HybridTimestamp, val lww: Int) {
+data class ObjectData(val value: ByteArray, val hlc: HybridTimestamp, val lww: Int) {
 
     companion object {
-        fun serialize(obj: DataObject, out: ByteBuf) {
+        fun serialize(obj: ObjectData, out: ByteBuf) {
             out.writeInt(obj.value.size)
             out.writeBytes(obj.value)
             HybridTimestamp.Serializer.serialize(obj.hlc, out)
             out.writeInt(obj.lww)
         }
 
-        fun deserialize(buff: ByteBuf): DataObject {
+        fun deserialize(buff: ByteBuf): ObjectData {
             val value = ByteArray(buff.readInt())
             buff.readBytes(value)
             val hlc = HybridTimestamp.Serializer.deserialize(buff)
             val lww = buff.readInt()
-            return DataObject(value, hlc, lww)
+            return ObjectData(value, hlc, lww)
         }
     }
 
@@ -85,7 +86,7 @@ data class DataObject(val value: ByteArray, val hlc: HybridTimestamp, val lww: I
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as DataObject
+        other as ObjectData
 
         if (!value.contentEquals(other.value)) return false
         if (hlc != other.hlc) return false

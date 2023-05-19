@@ -126,11 +126,11 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         registerTimerHandler(ReconnectTimer.ID) { timer: ReconnectTimer, _ -> openConnection(timer.node) }
         registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> propagateTime() }
 
-        registerRequestHandler(LocalReplicationRequest.ID) { req: LocalReplicationRequest, _ ->
-            onLocalReplicationRequest(req)
+        registerRequestHandler(ObjReplicationReq.ID) { req: ObjReplicationReq, _ ->
+            onReplicationRequest(req)
         }
 
-        registerReplyHandler(ChildReplicationReply.ID) { reply: ChildReplicationReply, _ ->
+        registerReplyHandler(FetchObjectsRep.ID) { reply: FetchObjectsRep, _ ->
             onChildReplicationReply(reply)
         }
 
@@ -168,7 +168,7 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
     abstract fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable)
 
     //Storage connection
-    abstract fun onLocalReplicationRequest(request: LocalReplicationRequest)
-    abstract fun onChildReplicationReply(reply: ChildReplicationReply)
+    abstract fun onReplicationRequest(request: ObjReplicationReq)
+    abstract fun onChildReplicationReply(reply: FetchObjectsRep)
     abstract fun onPropagateWrite(request: PropagateWriteRequest)
 }

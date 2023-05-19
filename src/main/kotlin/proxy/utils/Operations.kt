@@ -39,12 +39,15 @@ data class WriteOperation(
 
 data class MigrationOperation(val hlc: HybridTimestamp, val path: List<Host>) : Operation(MIGRATION)
 
+data class PartitionFetchOperation(val partition: String) : Operation(PARTITION_FETCH)
+
 abstract class Operation(val type: Short) {
 
     companion object {
         const val READ: Short = 1
         const val WRITE: Short = 2
         const val MIGRATION: Short = 3
+        const val PARTITION_FETCH: Short = 4
     }
 
     object Serializer : ISerializer<Operation> {
@@ -68,6 +71,10 @@ abstract class Operation(val type: Short) {
                     HybridTimestamp.Serializer.serialize(msg.hlc, out)
                     out.writeInt(msg.path.size)
                     msg.path.forEach { Host.serializer.serialize(it, out) }
+                }
+
+                is PartitionFetchOperation -> {
+                    encodeUTF8(msg.partition, out)
                 }
             }
         }
@@ -96,6 +103,11 @@ abstract class Operation(val type: Short) {
                     val path = mutableListOf<Host>()
                     repeat(pathSize) { path.add(Host.serializer.deserialize(buff)) }
                     MigrationOperation(hlc, path)
+                }
+
+                PARTITION_FETCH -> {
+                    val partition = decodeUTF8(buff)
+                    PartitionFetchOperation(partition)
                 }
 
                 else -> throw IllegalArgumentException("Unknown operation type: $type")

@@ -76,6 +76,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
         updateTsAndStableTs()
         //TODO get list of all data from storage (probably have to track it here too)
+
         sendMessage(SyncRequest(Upstream(stableTimestamp), mutableSetOf()), host, TCPChannel.CONNECTION_OUT)
     }
 
@@ -83,11 +84,13 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         val oldState = state as ParentSync
         assertOrExit(host == oldState.parent, "Parent mismatch")
 
+        //TODO parentReady does not need dataRequests, only ParentSync
         state = ParentReady(host, emptyList(), emptyList(), oldState.dataRequests)
 
         onReconfiguration(host, msg.reconfiguration)
 
         logger.info("Requesting pending data to new parent")
+        //TODO only if there is something to request...
         sendMessage(DataRequest(oldState.dataRequests.toSet()), oldState.parent, TCPChannel.CONNECTION_OUT)
     }
 
@@ -192,7 +195,11 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         children[child] = ChildReady(child, childObjects)
         logger.info("CHILD READY $child")
 
+        //TODO request data from storage before sending syncResponse
+
         updateTsAndStableTs()
+
+        //TODO send ALL data from syncRequest
         sendMessage(SyncResponse(buildReconfigurationMessage(), ByteArray(0)), child, TCPChannel.CONNECTION_IN)
         onUpstream(child, msg.upstream)
     }
@@ -256,11 +263,16 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         logger.warn("Message $msg to $to failed: ${cause.localizedMessage}")
     }
 
-    override fun onLocalReplicationRequest(request: LocalReplicationRequest) {
+    override fun onReplicationRequest(request: ObjReplicationReq) {
         assertOrExit(state !is Datacenter, "Local replication request while in datacenter mode")
         assertOrExit(state !is Inactive, "Local replication request while inactive")
 
         val nodeState = state as Node
+
+
+        //TODO if ParentConnecting, do nothing (after connecting, tree will get all data requests from Storage)
+        //TODO if ParentSync, put in pending (tree will request data after sync finishes)
+        //TODO if connected, request without putting in any pending
 
         val toRequest = mutableSetOf<ObjectIdentifier>()
         for(objId in request.objectIdentifiers) {
@@ -284,10 +296,10 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
                 toRequest.add(it)
             }
         }
-        sendRequest(ChildReplicationRequest(child, toRequest), Storage.ID)
+        sendRequest(FetchObjectsReq(child, toRequest), Storage.ID)
     }
 
-    override fun onChildReplicationReply(reply: ChildReplicationReply) {
+    override fun onChildReplicationReply(reply: FetchObjectsRep) {
         val childState = children[reply.child]!! as ChildReady
 
         reply.objects.forEach {
@@ -306,7 +318,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
             assertOrExit(remove, "Received a data reply for a non-requested item")
         }
 
-        sendReply(LocalReplicationReply(msg.items), Storage.ID)
+        sendReply(ObjReplicationRep(msg.items), Storage.ID)
     }
 
 

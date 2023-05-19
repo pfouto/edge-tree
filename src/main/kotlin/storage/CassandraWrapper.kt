@@ -47,19 +47,23 @@ class CassandraWrapper() : StorageWrapper{
 
     }
 
-    override fun put(objId: ObjectIdentifier, objData: DataObject): DataObject {
+    override fun put(objId: ObjectIdentifier, objData: ObjectData): ObjectData {
         TODO("Not yet implemented")
     }
 
-    override fun get(objId: ObjectIdentifier): DataObject? {
+    override fun get(objId: ObjectIdentifier): ObjectData? {
         TODO("Not yet implemented")
     }
 
-    override fun delete(objId: ObjectIdentifier): DataObject? {
+    override fun delete(objId: ObjectIdentifier): ObjectData? {
         TODO("Not yet implemented")
     }
 
     override fun cleanUp() {
+        TODO("Not yet implemented")
+    }
+
+    override fun getFullPartitionData(partition: String): List<Pair<String, ObjectData>> {
         TODO("Not yet implemented")
     }
 
