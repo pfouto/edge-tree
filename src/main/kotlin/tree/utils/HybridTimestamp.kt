@@ -22,6 +22,7 @@ class HybridTimestamp(val logical: Long = 0, val counter: Int = 0) {
         return logical > other.logical || (logical == other.logical && counter > other.counter)
     }
 
+
     fun max(other: HybridTimestamp): HybridTimestamp {
         return if (isAfter(other)) this else other
     }
@@ -32,6 +33,22 @@ class HybridTimestamp(val logical: Long = 0, val counter: Int = 0) {
 
     override fun toString(): String {
         return "($logical,$counter)"
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as HybridTimestamp
+
+        if (logical != other.logical) return false
+        return counter == other.counter
+    }
+
+    override fun hashCode(): Int {
+        var result = logical.hashCode()
+        result = 31 * result + counter
+        return result
     }
 
     object Serializer : ISerializer<HybridTimestamp> {

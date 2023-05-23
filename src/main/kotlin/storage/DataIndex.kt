@@ -4,25 +4,12 @@ class DataIndex {
 
     private val partitions: MutableMap<String, Partition> = mutableMapOf()
 
-    abstract class Partition(val partitionName: String)
-
-    class FullPartition(partitionName: String) : Partition(partitionName)
-
-    class PartialPartition(partitionName: String, val keys: MutableSet<String> = mutableSetOf()) :
-        Partition(partitionName) {
-
-        companion object {
-            fun single(partitionName: String, key: String): PartialPartition {
-                val partition = PartialPartition(partitionName)
-                partition.keys.add(key)
-                return partition
-            }
-        }
-
-    }
-
     fun containsFullPartition(partitionName: String): Boolean {
         return partitions[partitionName] is FullPartition
+    }
+
+    fun partitionIterator(): Iterator<Partition> {
+        return partitions.values.iterator()
     }
 
     fun containsObject(id: ObjectIdentifier): Boolean {
@@ -51,4 +38,26 @@ class DataIndex {
     fun clear() {
         partitions.clear()
     }
+
+    abstract class Partition(val name: String)
+
+    class FullPartition(name: String) : Partition(name)
+
+    class PartialPartition(name: String, val keys: MutableSet<String> = mutableSetOf()) :
+        Partition(name) {
+
+        fun keyIterator(): Iterator<String> {
+            return keys.iterator()
+        }
+
+        companion object {
+            fun single(name: String, key: String): PartialPartition {
+                val partition = PartialPartition(name)
+                partition.keys.add(key)
+                return partition
+            }
+        }
+
+    }
+
 }

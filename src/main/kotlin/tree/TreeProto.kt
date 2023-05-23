@@ -135,6 +135,8 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
 
         registerRequestHandler(PropagateWriteRequest.ID) { req: PropagateWriteRequest, _ -> onPropagateWrite(req) }
 
+        registerReplyHandler(SyncReply.ID) { req: SyncReply, _ -> onSyncReply(req) }
+
     }
 
     override fun init(props: Properties) {
@@ -170,4 +172,5 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
     abstract fun onFetchObjectsReply(reply: FetchObjectsRep)
     abstract fun onFetchPartitionRep(reply: FetchPartitionRep)
     abstract fun onPropagateWrite(request: PropagateWriteRequest)
+    abstract fun onSyncReply(reply: SyncReply)
 }

@@ -16,11 +16,16 @@ class InMemoryWrapper : StorageWrapper {
 
     override fun put(objId: ObjectIdentifier, objData: ObjectData): ObjectData {
         val partition = data.computeIfAbsent(objId.partition) { mutableMapOf() }
-        return partition.merge(objId.key, objData) { old, new -> if (new.hlc.isAfter(old.hlc)) new else old }!!
+        return partition.merge(objId.key, objData)
+        { old, new -> if (new.metadata.isAfter(old.metadata)) new else old }!!
     }
 
     override fun get(objId: ObjectIdentifier): ObjectData? {
         return data[objId.partition]?.get(objId.key)
+    }
+
+    override fun getMetadata(objId: ObjectIdentifier): ObjectMetadata? {
+        return data[objId.partition]?.get(objId.key)?.metadata
     }
 
     override fun delete(objId: ObjectIdentifier): ObjectData? {
@@ -29,6 +34,10 @@ class InMemoryWrapper : StorageWrapper {
 
     override fun getFullPartitionData(partition: String): List<Pair<String, ObjectData>> {
         return data[partition]!!.map { Pair(it.key, it.value) }
+    }
+
+    override fun getFullPartitionMetadata(partition: String): Map<String, ObjectMetadata> {
+        return data[partition]!!.map { it.key to it.value.metadata }.toMap()
     }
 
     override fun cleanUp() {

@@ -9,15 +9,17 @@ interface StorageWrapper {
     fun initialize()
     fun put(objId: ObjectIdentifier, objData: ObjectData): ObjectData
     fun get(objId: ObjectIdentifier): ObjectData?
+    fun getMetadata(objId: ObjectIdentifier): ObjectMetadata?
     fun delete(objId: ObjectIdentifier): ObjectData?
     fun cleanUp()
     fun getFullPartitionData(partition: String): List<Pair<String, ObjectData>>
+    fun getFullPartitionMetadata(partition: String): Map<String, ObjectMetadata>
 }
 
 data class RemoteWrite(val objectIdentifier: ObjectIdentifier, val objectData: ObjectData)
 
-data class FetchedObject(val objectIdentifier: ObjectIdentifier, val objectData: ObjectData?){
-    companion object{
+data class FetchedObject(val objectIdentifier: ObjectIdentifier, val objectData: ObjectData?) {
+    companion object {
         fun serialize(fetchedObject: FetchedObject, out: ByteBuf) {
             encodeUTF8(fetchedObject.objectIdentifier.partition, out)
             encodeUTF8(fetchedObject.objectIdentifier.key, out)
@@ -39,12 +41,12 @@ data class FetchedObject(val objectIdentifier: ObjectIdentifier, val objectData:
     }
 }
 
-data class ObjectIdentifier(val partition: String, val key: String){
-    companion object{
+data class ObjectIdentifier(val partition: String, val key: String) {
+    companion object {
         fun serializeSet(set: Set<ObjectIdentifier>, out: ByteBuf) {
             out.writeInt(set.size)
             set.forEach {
-                encodeUTF8(it.partition,out)
+                encodeUTF8(it.partition, out)
                 encodeUTF8(it.key, out)
             }
         }
@@ -63,22 +65,40 @@ data class ObjectIdentifier(val partition: String, val key: String){
     }
 }
 
-data class ObjectData(val value: ByteArray, val hlc: HybridTimestamp, val lww: Int) {
+data class ObjectMetadata(val hlc: HybridTimestamp, val lww: Int) {
+    companion object {
+        fun serialize(obj: ObjectMetadata, out: ByteBuf) {
+            HybridTimestamp.Serializer.serialize(obj.hlc, out)
+            out.writeInt(obj.lww)
+        }
+
+        fun deserialize(buff: ByteBuf): ObjectMetadata {
+            val hlc = HybridTimestamp.Serializer.deserialize(buff)
+            val lww = buff.readInt()
+            return ObjectMetadata(hlc, lww)
+        }
+    }
+
+    fun isAfter(other: ObjectMetadata): Boolean {
+        return hlc.isAfter(other.hlc) || (hlc == other.hlc && lww > other.lww)
+    }
+
+}
+
+data class ObjectData(val value: ByteArray, val metadata: ObjectMetadata) {
 
     companion object {
         fun serialize(obj: ObjectData, out: ByteBuf) {
             out.writeInt(obj.value.size)
             out.writeBytes(obj.value)
-            HybridTimestamp.Serializer.serialize(obj.hlc, out)
-            out.writeInt(obj.lww)
+            ObjectMetadata.serialize(obj.metadata, out)
         }
 
         fun deserialize(buff: ByteBuf): ObjectData {
             val value = ByteArray(buff.readInt())
             buff.readBytes(value)
-            val hlc = HybridTimestamp.Serializer.deserialize(buff)
-            val lww = buff.readInt()
-            return ObjectData(value, hlc, lww)
+            val metadata = ObjectMetadata.deserialize(buff)
+            return ObjectData(value, metadata)
         }
     }
 
@@ -89,14 +109,14 @@ data class ObjectData(val value: ByteArray, val hlc: HybridTimestamp, val lww: I
         other as ObjectData
 
         if (!value.contentEquals(other.value)) return false
-        if (hlc != other.hlc) return false
-        return lww == other.lww
+        return metadata == other.metadata
     }
 
     override fun hashCode(): Int {
         var result = value.contentHashCode()
-        result = 31 * result + hlc.hashCode()
-        result = 31 * result + lww
+        result = 31 * result + metadata.hashCode()
         return result
     }
+
+
 }

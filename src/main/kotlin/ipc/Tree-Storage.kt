@@ -3,10 +3,38 @@ package ipc
 import pt.unl.fct.di.novasys.babel.generic.ProtoReply
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 import pt.unl.fct.di.novasys.network.data.Host
-import storage.FetchedObject
-import storage.ObjectData
-import storage.ObjectIdentifier
-import storage.RemoteWrite
+import storage.*
+
+/**
+ * From Tree to Storage requesting the current keys + metadata for parent synchronization
+ */
+class SyncRequest(val parent: Host) : ProtoRequest(ID) {
+    companion object {
+        const val ID: Short = 212
+    }
+}
+
+/**
+ * From Storage to Tree with the current keys + metadata for parent synchronization
+ */
+class SyncReply(
+    val parent: Host,
+    val fullPartitions: MutableMap<String, Map<String, ObjectMetadata>>,
+    val partialPartitions: MutableMap<String, Map<String, ObjectMetadata>>,
+) : ProtoReply(ID) {
+    companion object {
+        const val ID: Short = 213
+    }
+}
+
+/**
+ * From Tree to Storage with a set of objects to apply after sync
+ */
+class SyncApply(val objects: List<FetchedObject>) : ProtoRequest(ID) {
+    companion object {
+        const val ID: Short = 214
+    }
+}
 
 /**
  * From Storage to Tree requesting object(s) to be fetched from a parent
@@ -16,6 +44,7 @@ class ObjReplicationReq(val requests: Set<ObjectIdentifier>) : ProtoRequest(ID) 
         const val ID: Short = 201
     }
 }
+
 /**
  * From Tree to Storage with objects(s) that has been previously requested locally
  */
@@ -61,6 +90,7 @@ class FetchObjectsRep(val child: Host, val objects: List<FetchedObject>) :
         const val ID: Short = 206
     }
 }
+
 /**
  * From Tree to Storage requesting object(s) for a child
  */

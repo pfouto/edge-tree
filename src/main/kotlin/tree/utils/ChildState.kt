@@ -7,7 +7,10 @@ import storage.RemoteWrite
 
 abstract class ChildState(val child: Host)
 
-class ChildSync(child: Host) : ChildState(child)
+class ChildConnected(child: Host) : ChildState(child)
+
+class ChildSync(child: Host, val objects: DataIndex, var childStableTime: HybridTimestamp = HybridTimestamp())
+    : ChildState(child)
 
 class ChildReady(
     child: Host,

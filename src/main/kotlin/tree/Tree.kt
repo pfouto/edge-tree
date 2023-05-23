@@ -60,38 +60,41 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     }
 
     /* ------------------------------- PARENT HANDLERS ------------------------------------------- */
-    private fun newParent(
-        parent: Host,
-        backups: List<Host> = mutableListOf(),
-        dataRequests: MutableSet<ObjectIdentifier> = mutableSetOf(),
-    ) {
-        state = ParentConnecting(parent, backups, dataRequests)
+    private fun newParent(parent: Host, backups: List<Host> = mutableListOf()) {
+        state = ParentConnecting(parent, backups)
         openConnection(parent)
     }
 
     override fun parentConnected(host: Host) {
         val oldState = state as ParentConnecting
         assertOrExit(host == oldState.parent, "Parent mismatch")
-        state = ParentSync.fromConnecting(oldState)
+        state = ParentConnected(oldState.parent, oldState.grandparents)
 
+        sendRequest(SyncRequest(oldState.parent), Storage.ID)
+    }
+
+    override fun onSyncReply(reply: SyncReply) {
+        if (state !is ParentConnected) return
+        val oldState = state as ParentConnected
+        if (oldState.parent != reply.parent) return
+
+        state = ParentSync(oldState.parent, oldState.grandparents)
         updateTsAndStableTs()
-        //TODO get list of all data from storage (probably have to track it here too)
-
-        sendMessage(SyncRequest(Upstream(stableTimestamp), mutableSetOf()), host, TCPChannel.CONNECTION_OUT)
+        sendMessage(
+            SyncRequest(Upstream(stableTimestamp), reply.fullPartitions, reply.partialPartitions),
+            reply.parent, TCPChannel.CONNECTION_OUT
+        )
     }
 
     override fun onParentSyncResponse(host: Host, msg: SyncResponse) {
-        val oldState = state as ParentSync
+        val oldState = state as ParentConnected
         assertOrExit(host == oldState.parent, "Parent mismatch")
+        state = ParentReady(host, emptyList(), emptyList())
 
-        //TODO parentReady does not need dataRequests, only ParentSync
-        state = ParentReady(host, emptyList(), emptyList(), oldState.dataRequests)
+        sendRequest(SyncApply(msg.items), Storage.ID)
 
         onReconfiguration(host, msg.reconfiguration)
 
-        logger.info("Requesting pending data to new parent")
-        //TODO only if there is something to request...
-        sendMessage(DataRequest(oldState.dataRequests.toSet()), oldState.parent, TCPChannel.CONNECTION_OUT)
     }
 
     override fun onReconfiguration(host: Host, reconfiguration: Reconfiguration) {
@@ -102,7 +105,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         for (i in 0 until reconfiguration.grandparents.size + 1)
             metadata.add(Metadata(HybridTimestamp()))
 
-        state = ParentReady(host, reconfiguration.grandparents, metadata, oldState.dataRequests)
+        state = ParentReady(host, reconfiguration.grandparents, metadata)
 
         onDownstream(host, reconfiguration.downstream)
 
@@ -274,9 +277,11 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         //TODO if ParentSync, put in pending (tree will request data after sync finishes)
         //TODO if connected, request without putting in any pending
 
+        //TODO ignore if not ParentReady (we will ask Storage to re-request everything when ParentReady)
+
         val toRequest = mutableSetOf<ObjectIdentifier>()
-        for(objId in request.objectIdentifiers) {
-            if(nodeState.dataRequests.add(objId)){
+        for (objId in request.objectIdentifiers) {
+            if (nodeState.dataRequests.add(objId)) {
                 toRequest.add(objId)
             }
         }
@@ -295,7 +300,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
         val toRequest = mutableSetOf<ObjectIdentifier>()
         msg.items.forEach {
-            if(childState.objects[it] == null) {
+            if (childState.objects[it] == null) {
                 childState.objects[it] = ChildObjectState.PENDING
                 toRequest.add(it)
             }
@@ -331,10 +336,12 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
 
     override fun onPropagateWrite(request: PropagateWriteRequest) {
-        //Send to parent always
+        //Send to parent if ready, else queue it until after sync (if we are dc, do nothing)
         //Send to child only if ready, if pending queue it (?) since this update can be newer than the one being fetched
         //May this does not happen, and we only need to queue if it comes from another child or a parent... (and not local)
     }
+
+    //TODO onReceiveRemoteWrite
 
     private fun assertOrExit(condition: Boolean, msg: String) {
         if (!condition) {
