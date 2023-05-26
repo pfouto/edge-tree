@@ -61,8 +61,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerReplyHandler(PartitionReplicationRep.ID) { rep: PartitionReplicationRep, _ ->
             onPartitionReplicationReply(rep)
         }
-        registerRequestHandler(SyncRequest.ID) { req: SyncRequest, _ -> onSyncRequest(req) }
+        registerRequestHandler(FetchMetadataReq.ID) { req: FetchMetadataReq, _ -> onFetchMetadata(req) }
         registerRequestHandler(SyncApply.ID) { req: SyncApply, _ -> onSyncApply(req) }
+        registerRequestHandler(DataDiffRequest.ID) { req: DataDiffRequest, _ -> onDataDiffRequest(req) }
     }
 
     override fun init(props: Properties) {
@@ -92,7 +93,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         storageWrapper!!.initialize()
     }
 
-    private fun onSyncRequest(req: SyncRequest) {
+    private fun onFetchMetadata(req: FetchMetadataReq) {
+        logger.debug("Received FetchMetadataReq to parent {}", req.parent)
         val fullPartitions = mutableMapOf<String, Map<String, ObjectMetadata>>()
         val partialPartitions = mutableMapOf<String, Map<String, ObjectMetadata>>()
         dataIndex.partitionIterator().forEach { partition ->
@@ -105,21 +107,48 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                     val partialPartition = mutableMapOf<String, ObjectMetadata>()
                     partition.keyIterator().forEach { key ->
                         partialPartition[key] =
-                            storageWrapper!!.getMetadata(ObjectIdentifier(partition.name, key)) ?:
-                            ObjectMetadata(HybridTimestamp(), 0)
+                            storageWrapper!!.getMetadata(ObjectIdentifier(partition.name, key)) ?: ObjectMetadata(
+                                HybridTimestamp(),
+                                0
+                            )
                     }
                     partialPartitions[partition.name] = partialPartition
                 }
             }
 
         }
-        sendReply(SyncReply(req.parent, fullPartitions, partialPartitions), TreeProto.ID)
+        sendReply(FetchMetadataRep(req.parent, fullPartitions, partialPartitions), TreeProto.ID)
 
     }
 
+    private fun onDataDiffRequest(req: DataDiffRequest) {
+        logger.debug("Diff data request from {}", req.child)
+        val response: MutableList<FetchedObject> = mutableListOf()
+        req.msg.fullPartitions.forEach { p ->
+            assertOrExit(dataIndex.containsFullPartition(p.key), "Partition ${p.key} not found")
+            response.addAll(storageWrapper!!.getPartitionDataIfNewer(p.key, p.value))
+        }
+        req.msg.partialPartitions.forEach { (pName, objects) ->
+            objects.forEach { (key, metadata) ->
+                assertOrExit(dataIndex.containsObject(ObjectIdentifier(pName, key)), "Object $key not found")
+                val objId = ObjectIdentifier(pName, key)
+                val objData = storageWrapper!!.get(objId)
+                if (objData != null && objData.metadata.isAfter(metadata))
+                    response.add(FetchedObject(objId, objData))
+            }
+        }
+        sendReply(DataDiffReply(req.child, response), TreeProto.ID)
+    }
+
     private fun onSyncApply(req: SyncApply) {
-        //TODO just write everything (check if all objects are in DataIndex)
-        //localData.apply(req.data)
+        logger.debug("Sync apply received")
+        req.objects.forEach { (objId, objData) ->
+            storageWrapper!!.put(objId, objData!!)
+        }
+        pendingFullPartitions.forEach { (p, _) ->
+            sendRequest(PartitionReplicationReq(p), TreeProto.ID)
+        }
+        sendRequest(ObjReplicationReq(pendingObjects.keys.toSet()), TreeProto.ID)
     }
 
     private fun onLocalOpRequest(req: OpRequest) {

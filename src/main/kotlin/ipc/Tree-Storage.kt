@@ -4,11 +4,30 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoReply
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 import pt.unl.fct.di.novasys.network.data.Host
 import storage.*
+import tree.messaging.up.SyncRequest
+
+/**
+ * From Tree to Storage requesting the data difference to send to synchronizing child
+ */
+class DataDiffRequest(val child: Host, val msg: SyncRequest) : ProtoRequest(ID) {
+    companion object {
+        const val ID: Short = 214
+    }
+}
+
+/**
+ * From Storage to Tree with the data difference to send to synchronizing child
+ */
+class DataDiffReply(val child: Host, val data: List<FetchedObject>) : ProtoReply(ID) {
+    companion object {
+        const val ID: Short = 215
+    }
+}
 
 /**
  * From Tree to Storage requesting the current keys + metadata for parent synchronization
  */
-class SyncRequest(val parent: Host) : ProtoRequest(ID) {
+class FetchMetadataReq(val parent: Host) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 212
     }
@@ -17,7 +36,7 @@ class SyncRequest(val parent: Host) : ProtoRequest(ID) {
 /**
  * From Storage to Tree with the current keys + metadata for parent synchronization
  */
-class SyncReply(
+class FetchMetadataRep(
     val parent: Host,
     val fullPartitions: MutableMap<String, Map<String, ObjectMetadata>>,
     val partialPartitions: MutableMap<String, Map<String, ObjectMetadata>>,

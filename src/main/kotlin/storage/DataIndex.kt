@@ -1,8 +1,23 @@
 package storage
 
+import tree.messaging.up.SyncRequest
+
 class DataIndex {
 
     private val partitions: MutableMap<String, Partition> = mutableMapOf()
+
+    companion object {
+        fun fromSyncRequest(syncRequest: SyncRequest): DataIndex {
+            val index = DataIndex()
+            syncRequest.fullPartitions.forEach { (partition, _) ->
+                index.partitions[partition] = FullPartition(partition)
+            }
+            syncRequest.partialPartitions.forEach { (partition, objects) ->
+                index.partitions[partition] = PartialPartition(partition, objects.keys.toMutableSet())
+            }
+            return index
+        }
+    }
 
     fun containsFullPartition(partitionName: String): Boolean {
         return partitions[partitionName] is FullPartition

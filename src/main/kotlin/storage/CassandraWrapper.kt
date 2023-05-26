@@ -55,6 +55,10 @@ class CassandraWrapper() : StorageWrapper{
         TODO("Not yet implemented")
     }
 
+    override fun getMetadata(objId: ObjectIdentifier): ObjectMetadata? {
+        TODO("Not yet implemented")
+    }
+
     override fun delete(objId: ObjectIdentifier): ObjectData? {
         TODO("Not yet implemented")
     }
@@ -63,7 +67,18 @@ class CassandraWrapper() : StorageWrapper{
         TODO("Not yet implemented")
     }
 
+    override fun getPartitionDataIfNewer(
+        partition: String,
+        metadata: Map<String, ObjectMetadata>,
+    ): List<FetchedObject> {
+        TODO("Not yet implemented")
+    }
+
     override fun getFullPartitionData(partition: String): List<Pair<String, ObjectData>> {
+        TODO("Not yet implemented")
+    }
+
+    override fun getFullPartitionMetadata(partition: String): Map<String, ObjectMetadata> {
         TODO("Not yet implemented")
     }
 

@@ -36,6 +36,19 @@ class InMemoryWrapper : StorageWrapper {
         return data[partition]!!.map { Pair(it.key, it.value) }
     }
 
+    override fun getPartitionDataIfNewer(
+        partition: String,
+        metadata: Map<String, ObjectMetadata>,
+    ): List<FetchedObject> {
+        val result = mutableListOf<FetchedObject>()
+        val partitionData = data[partition]!!
+        partitionData.forEach { (key, value) ->
+            if (metadata[key] == null || value.metadata.isAfter(metadata[key]!!))
+                result.add(FetchedObject(ObjectIdentifier(partition, key), value))
+        }
+        return result
+    }
+
     override fun getFullPartitionMetadata(partition: String): Map<String, ObjectMetadata> {
         return data[partition]!!.map { it.key to it.value.metadata }.toMap()
     }

@@ -75,7 +75,7 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         registerMessageHandler(
             channel,
             SyncRequest.ID,
-            { msg: SyncRequest, from: Host, _, _ -> onSyncRequest(from, msg) },
+            { msg: SyncRequest, from: Host, _, _ -> onChildSyncRequest(from, msg) },
             { msg: SyncRequest, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
 
@@ -86,7 +86,7 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         )
         registerMessageHandler(
             channel, Upstream.ID,
-            { msg: Upstream, from, _, _ -> onUpstream(from, msg) },
+            { msg: Upstream, from, _, _ -> onChildUpstream(from, msg) },
             { msg: Upstream, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
 
@@ -110,7 +110,7 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
 
         registerMessageHandler(
             channel, DataRequest.ID,
-            { msg: DataRequest, from, _, _ -> onDataRequest(from, msg) },
+            { msg: DataRequest, from, _, _ -> onChildDataRequest(from, msg) },
             { msg: DataRequest, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
         registerMessageHandler(
@@ -126,16 +126,17 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         registerTimerHandler(ReconnectTimer.ID) { timer: ReconnectTimer, _ -> openConnection(timer.node) }
         registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> propagateTime() }
 
-        registerRequestHandler(ObjReplicationReq.ID) { req: ObjReplicationReq, _ -> onObjReplicationRequest(req) }
+        registerRequestHandler(ObjReplicationReq.ID) { req: ObjReplicationReq, _ -> onObjectReplicationRequest(req) }
         registerRequestHandler(PartitionReplicationReq.ID) { req: PartitionReplicationReq, _ ->
             onPartitionReplicationRequest(req)
         }
         registerReplyHandler(FetchObjectsRep.ID) { reply: FetchObjectsRep, _ -> onFetchObjectsReply(reply) }
-        registerReplyHandler(FetchPartitionRep.ID) { reply: FetchPartitionRep, _ -> onFetchPartitionRep(reply) }
+        registerReplyHandler(FetchPartitionRep.ID) { reply: FetchPartitionRep, _ -> onFetchPartitionReply(reply) }
 
         registerRequestHandler(PropagateWriteRequest.ID) { req: PropagateWriteRequest, _ -> onPropagateWrite(req) }
 
-        registerReplyHandler(SyncReply.ID) { req: SyncReply, _ -> onSyncReply(req) }
+        registerReplyHandler(FetchMetadataRep.ID) { req: FetchMetadataRep, _ -> onFetchMetadataReply(req) }
+        registerReplyHandler(DataDiffReply.ID) { req: DataDiffReply, _ -> onDataDiffReply(req) }
 
     }
 
@@ -145,32 +146,40 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         setupPeriodicTimer(PropagateTimer(), propagateTimeout, propagateTimeout)
     }
 
+    //Lifecycle events
     abstract fun onActivate(notification: ActivateNotification)
     abstract fun onDeactivate()
 
+    //Network events
     abstract fun parentConnected(host: Host)
     abstract fun parentConnectionLost(host: Host, cause: Throwable?)
     abstract fun parentConnectionFailed(host: Host, cause: Throwable?)
     abstract fun onChildConnected(child: Host)
     abstract fun onChildDisconnected(child: Host)
-
-    abstract fun onParentSyncResponse(host: Host, msg: SyncResponse)
-    abstract fun onReconfiguration(host: Host, reconfiguration: Reconfiguration)
-    abstract fun onDownstream(host: Host, msg: Downstream)
-    abstract fun onReject(host: Host)
-    abstract fun onSyncRequest(child: Host, msg: SyncRequest)
-    abstract fun onUpstream(child: Host, msg: Upstream)
-    abstract fun onDataRequest(child: Host, msg: DataRequest)
-    abstract fun onDataReply(child: Host, msg: DataReply)
-
-    abstract fun propagateTime()
     abstract fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable)
 
+    //Messaging from parent
+    abstract fun onParentSyncResponse(host: Host, msg: SyncResponse)
+    abstract fun onReconfiguration(host: Host, reconfiguration: Reconfiguration)
+    abstract fun onReject(host: Host)
+    abstract fun onDownstream(host: Host, msg: Downstream)
+    abstract fun onDataReply(parent: Host, msg: DataReply)
+
+    //Messaging from child
+    abstract fun onChildUpstream(child: Host, msg: Upstream)
+    abstract fun onChildDataRequest(child: Host, msg: DataRequest)
+    abstract fun onChildSyncRequest(child: Host, msg: SyncRequest)
+
+    //Timers
+    abstract fun propagateTime()
+
     //Storage connection
-    abstract fun onObjReplicationRequest(request: ObjReplicationReq)
+    abstract fun onObjectReplicationRequest(request: ObjReplicationReq)
     abstract fun onPartitionReplicationRequest(req: PartitionReplicationReq)
     abstract fun onFetchObjectsReply(reply: FetchObjectsRep)
-    abstract fun onFetchPartitionRep(reply: FetchPartitionRep)
+    abstract fun onFetchPartitionReply(reply: FetchPartitionRep)
+    abstract fun onFetchMetadataReply(reply: FetchMetadataRep)
+    abstract fun onDataDiffReply(reply: DataDiffReply)
+
     abstract fun onPropagateWrite(request: PropagateWriteRequest)
-    abstract fun onSyncReply(reply: SyncReply)
 }
