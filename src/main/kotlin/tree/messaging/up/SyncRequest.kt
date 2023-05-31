@@ -8,7 +8,7 @@ import pt.unl.fct.di.novasys.network.ISerializer
 import storage.ObjectMetadata
 
 data class SyncRequest(
-    val upstream: Upstream,
+    val upstream: UpstreamMetadata,
     val fullPartitions: MutableMap<String, Map<String, ObjectMetadata>>,
     val partialPartitions: MutableMap<String, Map<String, ObjectMetadata>>
 ) : ProtoMessage(ID) {
@@ -23,7 +23,7 @@ data class SyncRequest(
 
     object Serializer : ISerializer<SyncRequest> {
         override fun serialize(msg: SyncRequest, out: ByteBuf) {
-            Upstream.Serializer.serialize(msg.upstream, out)
+            UpstreamMetadata.Serializer.serialize(msg.upstream, out)
             out.writeInt(msg.fullPartitions.size)
             msg.fullPartitions.forEach { (partition, objects) ->
                 encodeUTF8(partition, out)
@@ -46,7 +46,7 @@ data class SyncRequest(
 
 
         override fun deserialize(buff: ByteBuf): SyncRequest {
-            val upstream = Upstream.Serializer.deserialize(buff)
+            val upstream = UpstreamMetadata.Serializer.deserialize(buff)
             val fullPartitions = mutableMapOf<String, Map<String, ObjectMetadata>>()
             val fullSize = buff.readInt()
             for (i in 0 until fullSize) {

@@ -59,6 +59,9 @@ class SyncApply(val objects: List<FetchedObject>) : ProtoRequest(ID) {
  * From Storage to Tree requesting object(s) to be fetched from a parent
  */
 class ObjReplicationReq(val requests: Set<ObjectIdentifier>) : ProtoRequest(ID) {
+
+    constructor(singleRequest: ObjectIdentifier) : this(setOf(singleRequest))
+
     companion object {
         const val ID: Short = 201
     }
@@ -76,7 +79,7 @@ class ObjReplicationRep(val objects: List<FetchedObject>) : ProtoReply(ID) {
 /**
  * From Storage to Tree requesting a full partition to be fetched from a parent
  */
-class PartitionReplicationReq(val request: String) : ProtoRequest(ID) {
+class PartitionReplicationReq(val partition: String) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 203
     }

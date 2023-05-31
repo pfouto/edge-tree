@@ -8,17 +8,11 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.network.data.Host
 import storage.DataIndex
-import storage.ObjectIdentifier
+import storage.RemoteWrite
 import storage.Storage
+import tree.messaging.down.*
+import tree.messaging.up.*
 import tree.utils.*
-import tree.messaging.down.Downstream
-import tree.messaging.down.Reconfiguration
-import tree.messaging.down.Reject
-import tree.messaging.down.SyncResponse
-import tree.messaging.up.DataReply
-import tree.messaging.up.DataRequest
-import tree.messaging.up.SyncRequest
-import tree.messaging.up.Upstream
 import java.net.Inet4Address
 import kotlin.system.exitProcess
 
@@ -42,6 +36,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
             field = value
             logger.info("TREE-STATE $state")
         }
+    private val pendingParentRemoteWrites = mutableListOf<RemoteWrite>()
 
     override fun onActivate(notification: ActivateNotification) {
         logger.info("$notification received")
@@ -97,7 +92,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         state = ParentSync(oldState.parent, oldState.grandparents)
         updateTsAndStableTs()
         sendMessage(
-            SyncRequest(Upstream(stableTimestamp), reply.fullPartitions, reply.partialPartitions),
+            SyncRequest(UpstreamMetadata(stableTimestamp), reply.fullPartitions, reply.partialPartitions),
             reply.parent, TCPChannel.CONNECTION_OUT
         )
     }
@@ -110,7 +105,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         logger.info("CHILD SYNC $ child")
 
         sendRequest(DataDiffRequest(child, msg), Storage.ID)
-        onChildUpstream(child, msg.upstream)
+        onChildUpstreamMetadata(child, msg.upstream)
     }
 
     override fun onDataDiffReply(reply: DataDiffReply) {
@@ -119,18 +114,23 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         logger.info("CHILD READY ${reply.child}")
         updateTsAndStableTs()
         sendMessage(SyncResponse(buildReconfigurationMessage(), reply.data), reply.child, TCPChannel.CONNECTION_IN)
+        sendMessage(DownstreamWrite(childState.pendingWrites), reply.child, TCPChannel.CONNECTION_IN)
     }
 
-
-    override fun onParentSyncResponse(host: Host, msg: SyncResponse) {
+    override fun onParentSyncResponse(parent: Host, msg: SyncResponse) {
         val oldState = state as ParentConnected
-        assertOrExit(host == oldState.parent, "Parent mismatch")
-        state = ParentReady(host, emptyList(), emptyList())
+        assertOrExit(parent == oldState.parent, "Parent mismatch")
+        state = ParentReady(parent, emptyList(), emptyList())
 
         //SyncApply also triggers requests for pending data
         sendRequest(SyncApply(msg.items), Storage.ID)
 
-        onReconfiguration(host, msg.reconfiguration)
+
+        onReconfiguration(parent, msg.reconfiguration)
+
+        sendMessage(UpstreamWrite(pendingParentRemoteWrites.toList()), parent, TCPChannel.CONNECTION_OUT)
+        pendingParentRemoteWrites.clear()
+
     }
 
     override fun onReconfiguration(host: Host, reconfiguration: Reconfiguration) {
@@ -143,14 +143,14 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
         state = ParentReady(host, reconfiguration.grandparents, metadata)
 
-        onDownstream(host, reconfiguration.downstream)
+        onParentDownstreamMetadata(host, reconfiguration.downstream)
 
         val reconfigurationMessage = buildReconfigurationMessage()
         for (childState in children.values)
             sendMessage(reconfigurationMessage, childState.child, TCPChannel.CONNECTION_IN)
     }
 
-    override fun onDownstream(host: Host, msg: Downstream) {
+    override fun onParentDownstreamMetadata(host: Host, msg: DownstreamMetadata) {
         val ready = state as ParentReady
         assertOrExit(host == ready.parent, "Parent mismatch")
 
@@ -215,9 +215,76 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         }
     }
 
+    override fun onDownstreamWrite(from: Host, msg: DownstreamWrite) {
+        msg.writes.forEach { sendReply(PropagateWriteReply(it), Storage.ID) }
+
+        //TODO persistence counter and id mapping - Is persistence irrelevant here?
+
+        //TODO put this code in function (similar to code in "onPropagateWrite")
+        msg.writes.forEach {
+            val writePartition = it.objectIdentifier.partition
+            children.forEach { (c, state) ->
+                when (state) {
+                    is ChildSync -> {
+                        if (state.objects.containsObject(it.objectIdentifier))
+                            state.pendingWrites.add(it)
+                    }
+
+                    is ChildReady -> {
+                        if (state.objects.containsObject(it.objectIdentifier))
+                            sendMessage(DownstreamWrite(it), c, TCPChannel.CONNECTION_IN)
+                        else if (state.pendingFullPartitions.containsKey(writePartition))
+                            state.pendingFullPartitions[writePartition]!!.add(it)
+                        else if (state.pendingObjects.containsKey(it.objectIdentifier))
+                            state.pendingObjects[it.objectIdentifier]!!.add(it)
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onUpstreamWrite(from: Host, msg: UpstreamWrite) {
+        msg.writes.forEach { sendReply(PropagateWriteReply(it), Storage.ID) }
+
+        //TODO persistence counter and id mapping
+        //TODO put this code in function (similar to code in "onPropagateWrite")
+        when (val parentState = state) {
+            is ParentSync, is ParentConnecting, is ParentConnected -> pendingParentRemoteWrites.addAll(msg.writes)
+            is ParentReady -> sendMessage(UpstreamWrite(msg.writes), parentState.parent, TCPChannel.CONNECTION_OUT)
+        }
+    }
+
+
+    override fun onPropagateWrite(request: PropagateWriteRequest) {
+        //TODO store request ID, and map to something different... (for configurable persistence)
+        when (val parentState = state) {
+            is ParentSync, is ParentConnecting, is ParentConnected -> pendingParentRemoteWrites.add(request.write)
+            is ParentReady -> sendMessage(UpstreamWrite(request.write), parentState.parent, TCPChannel.CONNECTION_OUT)
+        }
+
+        val writePartition = request.write.objectIdentifier.partition
+        children.forEach { (c, state) ->
+            when (state) {
+                is ChildSync -> {
+                    if (state.objects.containsObject(request.write.objectIdentifier))
+                        state.pendingWrites.add(request.write)
+                }
+
+                is ChildReady -> {
+                    if (state.objects.containsObject(request.write.objectIdentifier))
+                        sendMessage(DownstreamWrite(request.write), c, TCPChannel.CONNECTION_IN)
+                    else if (state.pendingFullPartitions.containsKey(writePartition))
+                        state.pendingFullPartitions[writePartition]!!.add(request.write)
+                    else if (state.pendingObjects.containsKey(request.write.objectIdentifier))
+                        state.pendingObjects[request.write.objectIdentifier]!!.add(request.write)
+                }
+            }
+        }
+    }
+
     /* ------------------------------- CHILD HANDLERS ------------------------------------------- */
 
-    override fun onChildUpstream(child: Host, msg: Upstream) {
+    override fun onChildUpstreamMetadata(child: Host, msg: UpstreamMetadata) {
         (children[child]!! as ChildMeta).childStableTime = msg.ts
         logger.info("CHILD-METADATA $child ${msg.ts}")
     }
@@ -231,7 +298,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     override fun propagateTime() {
         updateTsAndStableTs()
         if (state is ParentReady)
-            sendMessage(Upstream(stableTimestamp), (state as ParentReady).parent, TCPChannel.CONNECTION_OUT)
+            sendMessage(UpstreamMetadata(stableTimestamp), (state as ParentReady).parent, TCPChannel.CONNECTION_OUT)
 
         if (state is ParentReady || state is Datacenter) {
             val downstream = buildDownstreamMessage()
@@ -244,14 +311,14 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
     /* ------------------------------------ UTILS ------------------------------------------------ */
 
-    private fun buildDownstreamMessage(): Downstream {
+    private fun buildDownstreamMessage(): DownstreamMetadata {
         val timestamps = mutableListOf<HybridTimestamp>()
         timestamps.add(stableTimestamp)
         if (state is ParentReady) {
             for (p in (state as ParentReady).metadata)
                 timestamps.add(p.timestamp)
         }
-        return Downstream(timestamps)
+        return DownstreamMetadata(timestamps)
     }
 
     private fun buildReconfigurationMessage(): Reconfiguration {
@@ -277,85 +344,78 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     }
 
     override fun onObjectReplicationRequest(request: ObjReplicationReq) {
-        assertOrExit(state !is Datacenter, "Local replication request while in datacenter mode")
-        assertOrExit(state !is Inactive, "Local replication request while inactive")
-
         val nodeState = state as Node
 
-        //TODO if ParentConnecting, do nothing (after connecting, tree will get all data requests from Storage)
-        //TODO if ParentSync, put in pending (tree will request data after sync finishes)
-        //TODO if connected, request without putting in any pending
-
-        //TODO ignore if not ParentReady (we will ask Storage to re-request everything when ParentReady)
-
-        val toRequest = mutableSetOf<ObjectIdentifier>()
-        for (objId in request.objectIdentifiers) {
-            if (nodeState.dataRequests.add(objId)) {
-                toRequest.add(objId)
-            }
-        }
-
-        if (toRequest.isNotEmpty() && nodeState is ParentReady) {
-            logger.debug("Sending object replication request {}", toRequest)
-            sendMessage(DataRequest(toRequest), nodeState.parent, TCPChannel.CONNECTION_OUT)
+        if (nodeState is ParentReady) {
+            logger.debug("Sending object replication request {}", request.requests)
+            sendMessage(ObjectReplicationRequest(request.requests), nodeState.parent, TCPChannel.CONNECTION_OUT)
+        } else {
+            logger.debug("Ignoring object replication request while not ready")
         }
     }
 
     override fun onPartitionReplicationRequest(req: PartitionReplicationReq) {
-        assertOrExit(state !is Datacenter, "Local replication request while in datacenter mode")
-        assertOrExit(state !is Inactive, "Local replication request while inactive")
+        val nodeState = state as Node
 
-        TODO("Not yet implemented")
+        if (nodeState is ParentReady) {
+            logger.debug("Sending partition replication request {}", req.partition)
+            sendMessage(PartitionReplicationRequest(req.partition), nodeState.parent, TCPChannel.CONNECTION_OUT)
+        } else {
+            logger.debug("Ignoring partition replication request while not ready")
+        }
     }
 
-    override fun onChildDataRequest(child: Host, msg: DataRequest) {
+    override fun onChildObjReplicationRequest(child: Host, msg: ObjectReplicationRequest) {
         val childState = children[child]!! as ChildReady
+        msg.items.forEach { childState.pendingObjects.putIfAbsent(it, mutableListOf()) }
+        sendRequest(FetchObjectsReq(child, msg.items), Storage.ID)
+    }
 
-        val toRequest = mutableSetOf<ObjectIdentifier>()
-        msg.items.forEach {
-            if (childState.objects[it] == null) {
-                childState.objects[it] = ChildObjectState.PENDING
-                toRequest.add(it)
-            }
-        }
-        sendRequest(FetchObjectsReq(child, toRequest), Storage.ID)
+    override fun onChildPartitionReplicationRequest(from: Host, msg: PartitionReplicationRequest) {
+        val childState = children[from]!! as ChildReady
+        childState.pendingFullPartitions.putIfAbsent(msg.partition, mutableListOf())
+        sendRequest(FetchPartitionReq(from, msg.partition), Storage.ID)
     }
 
     override fun onFetchObjectsReply(reply: FetchObjectsRep) {
-        val childState = children[reply.child]!! as ChildReady
-
-        reply.objects.forEach {
-            childState.objects[it.objectIdentifier] = ChildObjectState.READY
+        val childState = children[reply.child]
+        if (childState == null || childState !is ChildReady) {
+            logger.warn("Received FetchObjectsReply to invalid child ${reply.child}")
+            return
         }
-        //TODO flush if pending data exists in childState (???)
 
-        sendMessage(DataReply(reply.objects), reply.child, TCPChannel.CONNECTION_IN)
+        sendMessage(ObjectReplicationReply(reply.objects), reply.child, TCPChannel.CONNECTION_IN)
+
+        val pendingRemoteWrites = mutableListOf<RemoteWrite>()
+        reply.objects.forEach {
+            pendingRemoteWrites.addAll(childState.pendingObjects.remove(it.objectIdentifier)!!)
+        }
+        if (pendingRemoteWrites.isNotEmpty())
+            sendMessage(DownstreamWrite(pendingRemoteWrites), reply.child, TCPChannel.CONNECTION_IN)
     }
 
     override fun onFetchPartitionReply(reply: FetchPartitionRep) {
-        TODO("Not yet implemented")
-    }
-
-    override fun onDataReply(parent: Host, msg: DataReply) {
-        val nodeState = state as ParentReady
-
-        msg.items.forEach {
-            val remove = nodeState.dataRequests.remove(it.objectIdentifier)
-            assertOrExit(remove, "Received a data reply for a non-requested item")
+        val childState = children[reply.child]
+        if (childState == null || childState !is ChildReady) {
+            logger.warn("Received FetchObjectsReply to invalid child ${reply.child}")
+            return
         }
 
+        sendMessage(PartitionReplicationReply(reply.partition, reply.objects), reply.child, TCPChannel.CONNECTION_IN)
+
+        val pendingRemoteWrites = childState.pendingFullPartitions.remove(reply.partition)!!
+        if (pendingRemoteWrites.isNotEmpty()) {
+            sendMessage(DownstreamWrite(pendingRemoteWrites), reply.child, TCPChannel.CONNECTION_IN)
+        }
+    }
+
+    override fun onParentObjReplicationReply(parent: Host, msg: ObjectReplicationReply) {
         sendReply(ObjReplicationRep(msg.items), Storage.ID)
     }
 
-
-
-    override fun onPropagateWrite(request: PropagateWriteRequest) {
-        //Send to parent if ready, else queue it until after sync (if we are dc, do nothing)
-        //Send to child only if ready, if pending queue it (?) since this update can be newer than the one being fetched
-        //May this does not happen, and we only need to queue if it comes from another child or a parent... (and not local)
+    override fun onParentPartitionReplicationReply(from: Host, msg: PartitionReplicationReply) {
+        sendReply(PartitionReplicationRep(msg.partition, msg.objects), Storage.ID)
     }
-
-    //TODO onReceiveRemoteWrite
 
     private fun assertOrExit(condition: Boolean, msg: String) {
         if (!condition) {

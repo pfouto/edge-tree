@@ -17,7 +17,22 @@ interface StorageWrapper {
     fun getFullPartitionMetadata(partition: String): Map<String, ObjectMetadata>
 }
 
-data class RemoteWrite(val objectIdentifier: ObjectIdentifier, val objectData: ObjectData)
+data class RemoteWrite(val objectIdentifier: ObjectIdentifier, val objectData: ObjectData){
+    companion object{
+        fun serialize(remoteWrite: RemoteWrite, out: ByteBuf){
+            encodeUTF8(remoteWrite.objectIdentifier.partition, out)
+            encodeUTF8(remoteWrite.objectIdentifier.key, out)
+            ObjectData.serialize(remoteWrite.objectData, out)
+        }
+
+        fun deserialize(buff: ByteBuf): RemoteWrite{
+            val partition = decodeUTF8(buff)
+            val key = decodeUTF8(buff)
+            val objectData = ObjectData.deserialize(buff)
+            return RemoteWrite(ObjectIdentifier(partition, key), objectData)
+        }
+    }
+}
 
 data class FetchedObject(val objectIdentifier: ObjectIdentifier, val objectData: ObjectData?) {
     companion object {

@@ -15,13 +15,18 @@ abstract class ChildMeta(
     var childStableTime: HybridTimestamp = HybridTimestamp(),
 ) : ChildState(child)
 
-class ChildSync(child: Host, objects: DataIndex, childStableTime: HybridTimestamp = HybridTimestamp()) :
+class ChildSync(
+    child: Host,
+    objects: DataIndex,
+    val pendingWrites: MutableList<RemoteWrite> = mutableListOf(),
+    childStableTime: HybridTimestamp = HybridTimestamp(),
+) :
     ChildMeta(child, objects, childStableTime)
 
 class ChildReady(
     child: Host,
     objects: DataIndex,
     childStableTime: HybridTimestamp = HybridTimestamp(),
-    val pendingObjects: Map<ObjectIdentifier, MutableList<RemoteWrite>> = mutableMapOf(),
-    val pendingFullPartitions: Map<String, MutableList<RemoteWrite>> = mutableMapOf(),
+    val pendingObjects: MutableMap<ObjectIdentifier, MutableList<RemoteWrite>> = mutableMapOf(),
+    val pendingFullPartitions: MutableMap<String, MutableList<RemoteWrite>> = mutableMapOf(),
 ) : ChildMeta(child, objects, childStableTime)

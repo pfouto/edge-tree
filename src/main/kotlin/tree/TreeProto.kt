@@ -8,16 +8,10 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
+import tree.messaging.down.*
 import tree.utils.PropagateTimer
 import tree.utils.ReconnectTimer
-import tree.messaging.down.Downstream
-import tree.messaging.down.Reconfiguration
-import tree.messaging.down.Reject
-import tree.messaging.down.SyncResponse
-import tree.messaging.up.DataReply
-import tree.messaging.up.DataRequest
-import tree.messaging.up.SyncRequest
-import tree.messaging.up.Upstream
+import tree.messaging.up.*
 import java.net.Inet4Address
 import java.util.*
 
@@ -65,12 +59,14 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
 
         registerMessageSerializer(channel, SyncRequest.ID, SyncRequest.Serializer)
         registerMessageSerializer(channel, SyncResponse.ID, SyncResponse.Serializer)
-        registerMessageSerializer(channel, Upstream.ID, Upstream.Serializer)
-        registerMessageSerializer(channel, Downstream.ID, Downstream.Serializer)
+        registerMessageSerializer(channel, UpstreamMetadata.ID, UpstreamMetadata.Serializer)
+        registerMessageSerializer(channel, DownstreamMetadata.ID, DownstreamMetadata.Serializer)
         registerMessageSerializer(channel, Reject.ID, Reject.Serializer)
         registerMessageSerializer(channel, Reconfiguration.ID, Reconfiguration.Serializer)
-        registerMessageSerializer(channel, DataRequest.ID, DataRequest.Serializer)
-        registerMessageSerializer(channel, DataReply.ID, DataReply.Serializer)
+        registerMessageSerializer(channel, ObjectReplicationRequest.ID, ObjectReplicationRequest.Serializer)
+        registerMessageSerializer(channel, ObjectReplicationReply.ID, ObjectReplicationReply.Serializer)
+        registerMessageSerializer(channel, PartitionReplicationRequest.ID, PartitionReplicationRequest.Serializer)
+        registerMessageSerializer(channel, PartitionReplicationReply.ID, PartitionReplicationReply.Serializer)
 
         registerMessageHandler(
             channel,
@@ -85,15 +81,15 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
             { msg: SyncResponse, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
         registerMessageHandler(
-            channel, Upstream.ID,
-            { msg: Upstream, from, _, _ -> onChildUpstream(from, msg) },
-            { msg: Upstream, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+            channel, UpstreamMetadata.ID,
+            { msg: UpstreamMetadata, from, _, _ -> onChildUpstreamMetadata(from, msg) },
+            { msg: UpstreamMetadata, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
 
         registerMessageHandler(
-            channel, Downstream.ID,
-            { msg: Downstream, from, _, _ -> onDownstream(from, msg) },
-            { msg: Downstream, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+            channel, DownstreamMetadata.ID,
+            { msg: DownstreamMetadata, from, _, _ -> onParentDownstreamMetadata(from, msg) },
+            { msg: DownstreamMetadata, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
 
         registerMessageHandler(
@@ -109,14 +105,34 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         )
 
         registerMessageHandler(
-            channel, DataRequest.ID,
-            { msg: DataRequest, from, _, _ -> onChildDataRequest(from, msg) },
-            { msg: DataRequest, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+            channel, ObjectReplicationRequest.ID,
+            { msg: ObjectReplicationRequest, from, _, _ -> onChildObjReplicationRequest(from, msg) },
+            { msg: ObjectReplicationRequest, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
         registerMessageHandler(
-            channel, DataReply.ID,
-            { msg: DataReply, from, _, _ -> onDataReply(from, msg) },
-            { msg: DataReply, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+            channel, ObjectReplicationReply.ID,
+            { msg: ObjectReplicationReply, from, _, _ -> onParentObjReplicationReply(from, msg) },
+            { msg: ObjectReplicationReply, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+        )
+        registerMessageHandler(
+            channel, PartitionReplicationRequest.ID,
+            { msg: PartitionReplicationRequest, from, _, _ -> onChildPartitionReplicationRequest(from, msg) },
+            { msg: PartitionReplicationRequest, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+        )
+        registerMessageHandler(
+            channel, PartitionReplicationReply.ID,
+            { msg: PartitionReplicationReply, from, _, _ -> onParentPartitionReplicationReply(from, msg) },
+            { msg: PartitionReplicationReply, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+        )
+        registerMessageHandler(
+            channel, UpstreamWrite.ID,
+            { msg: UpstreamWrite, from, _, _ -> onUpstreamWrite(from, msg) },
+            { msg: UpstreamWrite, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+        )
+        registerMessageHandler(
+            channel, DownstreamWrite.ID,
+            { msg: DownstreamWrite, from, _, _ -> onDownstreamWrite(from, msg) },
+            { msg: DownstreamWrite, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
 
 
@@ -159,16 +175,21 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
     abstract fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable)
 
     //Messaging from parent
-    abstract fun onParentSyncResponse(host: Host, msg: SyncResponse)
+    abstract fun onParentSyncResponse(parent: Host, msg: SyncResponse)
     abstract fun onReconfiguration(host: Host, reconfiguration: Reconfiguration)
     abstract fun onReject(host: Host)
-    abstract fun onDownstream(host: Host, msg: Downstream)
-    abstract fun onDataReply(parent: Host, msg: DataReply)
+    abstract fun onParentDownstreamMetadata(host: Host, msg: DownstreamMetadata)
+    abstract fun onParentObjReplicationReply(parent: Host, msg: ObjectReplicationReply)
+    abstract fun onParentPartitionReplicationReply(from: Host, msg: PartitionReplicationReply)
+    abstract fun onDownstreamWrite(from: Host, msg: DownstreamWrite)
+
 
     //Messaging from child
-    abstract fun onChildUpstream(child: Host, msg: Upstream)
-    abstract fun onChildDataRequest(child: Host, msg: DataRequest)
+    abstract fun onChildUpstreamMetadata(child: Host, msg: UpstreamMetadata)
+    abstract fun onChildObjReplicationRequest(child: Host, msg: ObjectReplicationRequest)
+    abstract fun onChildPartitionReplicationRequest(from: Host, msg: PartitionReplicationRequest, )
     abstract fun onChildSyncRequest(child: Host, msg: SyncRequest)
+    abstract fun onUpstreamWrite(from: Host, msg: UpstreamWrite)
 
     //Timers
     abstract fun propagateTime()

@@ -18,7 +18,7 @@ import kotlin.system.exitProcess
 
 class Storage(val address: Inet4Address, private val config: Config) : GenericProtocol(NAME, ID) {
 
-    //TODO if datacenter, persistence is instant and localData checks are not needed
+    //TODO if datacenter, persistence is instant!
 
     companion object {
         const val NAME = "Storage"
@@ -32,9 +32,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private val lww: Int = address.hashCode()
 
-    private var storageWrapper: StorageWrapper? = null
+    private lateinit var storageWrapper: StorageWrapper
 
-    private val dataIndex = DataIndex()
+    private lateinit var dataIndex: DataIndex
 
     // Pending reads and data requests for each pending object
     private val pendingObjects = mutableMapOf<ObjectIdentifier, Pair<MutableList<Long>, MutableList<Host>>>()
@@ -71,7 +71,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     }
 
     private fun onActivate(notification: ActivateNotification) {
-        storageWrapper = if (notification.contact != null) //datacenter
+
+        dataIndex = when {
+            notification.contact != null -> DataIndex()
+            else -> DataIndex.DCDataIndex()
+        }
+
+        storageWrapper = if (notification.contact == null) //datacenter
             when (config.dc_storage_type) {
                 CASSANDRA_TYPE -> CassandraWrapper()
                 IN_MEMORY_TYPE -> InMemoryWrapper()
@@ -90,7 +96,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 }
             }
         }
-        storageWrapper!!.initialize()
+        storageWrapper.initialize()
     }
 
     private fun onFetchMetadata(req: FetchMetadataReq) {
@@ -100,14 +106,14 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         dataIndex.partitionIterator().forEach { partition ->
             when (partition) {
                 is DataIndex.FullPartition -> {
-                    fullPartitions[partition.name] = storageWrapper!!.getFullPartitionMetadata(partition.name)
+                    fullPartitions[partition.name] = storageWrapper.getFullPartitionMetadata(partition.name)
                 }
 
                 is DataIndex.PartialPartition -> {
                     val partialPartition = mutableMapOf<String, ObjectMetadata>()
                     partition.keyIterator().forEach { key ->
                         partialPartition[key] =
-                            storageWrapper!!.getMetadata(ObjectIdentifier(partition.name, key)) ?: ObjectMetadata(
+                            storageWrapper.getMetadata(ObjectIdentifier(partition.name, key)) ?: ObjectMetadata(
                                 HybridTimestamp(),
                                 0
                             )
@@ -126,13 +132,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         val response: MutableList<FetchedObject> = mutableListOf()
         req.msg.fullPartitions.forEach { p ->
             assertOrExit(dataIndex.containsFullPartition(p.key), "Partition ${p.key} not found")
-            response.addAll(storageWrapper!!.getPartitionDataIfNewer(p.key, p.value))
+            response.addAll(storageWrapper.getPartitionDataIfNewer(p.key, p.value))
         }
         req.msg.partialPartitions.forEach { (pName, objects) ->
             objects.forEach { (key, metadata) ->
                 assertOrExit(dataIndex.containsObject(ObjectIdentifier(pName, key)), "Object $key not found")
                 val objId = ObjectIdentifier(pName, key)
-                val objData = storageWrapper!!.get(objId)
+                val objData = storageWrapper.get(objId)
                 if (objData != null && objData.metadata.isAfter(metadata))
                     response.add(FetchedObject(objId, objData))
             }
@@ -143,7 +149,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     private fun onSyncApply(req: SyncApply) {
         logger.debug("Sync apply received")
         req.objects.forEach { (objId, objData) ->
-            storageWrapper!!.put(objId, objData!!)
+            storageWrapper.put(objId, objData!!)
         }
         pendingFullPartitions.forEach { (p, _) ->
             sendRequest(PartitionReplicationReq(p), TreeProto.ID)
@@ -159,13 +165,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 val objData = ObjectData(req.op.value, ObjectMetadata(hlc, lww))
                 //Even if not present, we can complete the operation. After fetching the data,
                 // LWW will converge to the correct value
-                storageWrapper!!.put(objId, objData)
+                storageWrapper.put(objId, objData)
                 sendReply(OpReply(req.id, hlc, null), ClientProxy.ID)
 
                 //Check if available locally, if not, send replication request to tree
                 if (!dataIndex.containsObject(objId)) {
                     pendingObjects.computeIfAbsent(objId) {
-                        sendRequest(ObjReplicationReq(Collections.singleton(objId)), TreeProto.ID)
+                        sendRequest(ObjReplicationReq(objId), TreeProto.ID)
                         Pair(mutableListOf(), mutableListOf())
                     }
                 }
@@ -187,13 +193,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 val objId = ObjectIdentifier(req.op.partition, req.op.key)
 
                 if (dataIndex.containsObject(objId)) {
-                    when (val data = storageWrapper!!.get(objId)) {
+                    when (val data = storageWrapper.get(objId)) {
                         null -> sendReply(OpReply(req.id, null, null), ClientProxy.ID)
                         else -> sendReply(OpReply(req.id, data.metadata.hlc, data.value), ClientProxy.ID)
                     }
                 } else {
                     pendingObjects.computeIfAbsent(objId) {
-                        sendRequest(ObjReplicationReq(Collections.singleton(objId)), TreeProto.ID)
+                        sendRequest(ObjReplicationReq(objId), TreeProto.ID)
                         Pair(mutableListOf(), mutableListOf())
                     }.first.add(req.id)
                 }
@@ -224,7 +230,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
         req.objectIdentifiers.forEach { objId ->
             if (dataIndex.containsObject(objId)) {
-                val dataObj = storageWrapper!!.get(objId)
+                val dataObj = storageWrapper.get(objId)
                 toRespond.add(FetchedObject(objId, dataObj))
             }
 
@@ -243,7 +249,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
      */
     private fun onFetchPartitionReq(req: FetchPartitionReq) {
         if (dataIndex.containsFullPartition(req.partition)) {
-            val partitionData = storageWrapper!!.getFullPartitionData(req.partition)
+            val partitionData = storageWrapper.getFullPartitionData(req.partition)
             sendReply(FetchPartitionRep(req.child, req.partition, partitionData), TreeProto.ID)
         } else {
             pendingFullPartitions.computeIfAbsent(req.partition) {
@@ -256,9 +262,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     private fun onObjReplicationReply(rep: ObjReplicationRep) {
         rep.objects.forEach {
             val newValue: ObjectData? = if (it.objectData != null)
-                storageWrapper!!.put(it.objectIdentifier, it.objectData)
+                storageWrapper.put(it.objectIdentifier, it.objectData)
             else
-                storageWrapper!!.get(it.objectIdentifier)
+                storageWrapper.get(it.objectIdentifier)
 
             val callbacks = pendingObjects.remove(it.objectIdentifier)!!
 
@@ -291,12 +297,12 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         val result = dataIndex.addFullPartition(rep.partition)
         assertOrExit(result, "Received partition replication for already existing full partition ${rep.partition}")
         rep.objects.forEach { (key, objData) ->
-            storageWrapper!!.put(ObjectIdentifier(rep.partition, key), objData)
+            storageWrapper.put(ObjectIdentifier(rep.partition, key), objData)
         }
 
         val callbacks = pendingFullPartitions.remove(rep.partition)!!
         if (callbacks.isNotEmpty()) {
-            val partitionData = storageWrapper!!.getFullPartitionData(rep.partition)
+            val partitionData = storageWrapper.getFullPartitionData(rep.partition)
             callbacks.forEach { sendReply(FetchPartitionRep(it, rep.partition, partitionData), TreeProto.ID) }
         }
     }
@@ -306,7 +312,11 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             dataIndex.containsObject(write.objectIdentifier),
             "Received write for non-existent object ${write.objectIdentifier}"
         )
-        storageWrapper!!.put(write.objectIdentifier, write.objectData)
+
+        //TODO check GLC / HLC / whatever before executing blindly?
+        // Maybe not, because we receive in order...
+
+        storageWrapper.put(write.objectIdentifier, write.objectData)
     }
 
     /**
@@ -336,7 +346,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         pendingFullPartitions.clear()
         pendingObjects.clear()
 
-        storageWrapper!!.cleanUp()
+        storageWrapper.cleanUp()
     }
 
     private fun assertOrExit(condition: Boolean, msg: String) {

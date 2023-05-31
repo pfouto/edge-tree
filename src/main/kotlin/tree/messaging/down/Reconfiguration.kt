@@ -5,10 +5,10 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
 import pt.unl.fct.di.novasys.network.data.Host
 
-class Reconfiguration(val grandparents: List<Host>, val downstream: Downstream) : ProtoMessage(ID){
+class Reconfiguration(val grandparents: List<Host>, val downstream: DownstreamMetadata) : ProtoMessage(ID){
 
     companion object {
-        const val ID: Short = 202
+        const val ID: Short = 207
     }
 
     override fun toString(): String {
@@ -21,7 +21,7 @@ class Reconfiguration(val grandparents: List<Host>, val downstream: Downstream) 
             for (p in msg.grandparents) {
                 Host.serializer.serialize(p, out)
             }
-            Downstream.Serializer.serialize(msg.downstream, out)
+            DownstreamMetadata.Serializer.serialize(msg.downstream, out)
         }
 
         override fun deserialize(buff: ByteBuf): Reconfiguration {
@@ -31,7 +31,7 @@ class Reconfiguration(val grandparents: List<Host>, val downstream: Downstream) 
                 val host = Host.serializer.deserialize(buff)
                 parents.add(host)
             }
-            val downstream = Downstream.Serializer.deserialize(buff)
+            val downstream = DownstreamMetadata.Serializer.deserialize(buff)
             return Reconfiguration(parents, downstream)
         }
     }

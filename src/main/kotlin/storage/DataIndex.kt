@@ -2,7 +2,7 @@ package storage
 
 import tree.messaging.up.SyncRequest
 
-class DataIndex {
+open class DataIndex {
 
     private val partitions: MutableMap<String, Partition> = mutableMapOf()
 
@@ -19,15 +19,15 @@ class DataIndex {
         }
     }
 
-    fun containsFullPartition(partitionName: String): Boolean {
+    open fun containsFullPartition(partitionName: String): Boolean {
         return partitions[partitionName] is FullPartition
     }
 
-    fun partitionIterator(): Iterator<Partition> {
+    open fun partitionIterator(): Iterator<Partition> {
         return partitions.values.iterator()
     }
 
-    fun containsObject(id: ObjectIdentifier): Boolean {
+    open fun containsObject(id: ObjectIdentifier): Boolean {
         partitions[id.partition]?.let { partition ->
             if (partition is FullPartition) return true
             else if (partition is PartialPartition) return partition.keys.contains(id.key)
@@ -35,14 +35,14 @@ class DataIndex {
         return false
     }
 
-    fun addFullPartition(partitionName: String): Boolean {
+    open fun addFullPartition(partitionName: String): Boolean {
         if (partitions[partitionName] is FullPartition)
             return false
         partitions[partitionName] = FullPartition(partitionName)
         return true
     }
 
-    fun addObject(objId: ObjectIdentifier) {
+    open fun addObject(objId: ObjectIdentifier) {
         when (val partition = partitions[objId.partition]) {
             is FullPartition -> return
             is PartialPartition -> partition.keys.add(objId.key)
@@ -75,4 +75,27 @@ class DataIndex {
 
     }
 
+    class DCDataIndex : DataIndex() {
+        override fun containsFullPartition(partitionName: String): Boolean {
+            return true
+        }
+
+        override fun addFullPartition(partitionName: String): Boolean {
+            throw UnsupportedOperationException("Cannot add full partitions to DCDataIndex")
+        }
+
+        override fun addObject(objId: ObjectIdentifier) {
+            throw UnsupportedOperationException("Cannot add objects to DCDataIndex")
+        }
+
+        override fun partitionIterator(): Iterator<Partition> {
+            throw UnsupportedOperationException("Cannot iterate over partitions in DCDataIndex")
+        }
+
+        override fun containsObject(id: ObjectIdentifier): Boolean {
+            return true
+        }
+
+
+    }
 }
