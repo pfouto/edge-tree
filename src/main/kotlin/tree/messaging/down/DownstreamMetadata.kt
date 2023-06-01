@@ -6,7 +6,8 @@ import pt.unl.fct.di.novasys.network.ISerializer
 import tree.utils.HybridTimestamp
 
 
-data class DownstreamMetadata(val timestamps: List<HybridTimestamp>) : ProtoMessage(ID) {
+data class DownstreamMetadata(val timestamps: List<HybridTimestamp>, val persistence: Map<Int, Int>) :
+    ProtoMessage(ID) {
 
     companion object {
         const val ID: Short = 201
@@ -22,6 +23,11 @@ data class DownstreamMetadata(val timestamps: List<HybridTimestamp>) : ProtoMess
             for (ts in msg.timestamps) {
                 HybridTimestamp.Serializer.serialize(ts, out)
             }
+            out.writeInt(msg.persistence.size)
+            msg.persistence.forEach { (k, v) ->
+                out.writeInt(k)
+                out.writeInt(v)
+            }
         }
 
         override fun deserialize(buff: ByteBuf): DownstreamMetadata {
@@ -31,7 +37,14 @@ data class DownstreamMetadata(val timestamps: List<HybridTimestamp>) : ProtoMess
                 val ts = HybridTimestamp.Serializer.deserialize(buff)
                 timestamps.add(ts)
             }
-            return DownstreamMetadata(timestamps)
+            val nPersistence = buff.readInt()
+            val persistence = mutableMapOf<Int, Int>()
+            for (i in 0 until nPersistence) {
+                val level = buff.readInt()
+                val opId = buff.readInt()
+                persistence[level] = opId
+            }
+            return DownstreamMetadata(timestamps, persistence)
         }
     }
 

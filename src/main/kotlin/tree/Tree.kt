@@ -144,14 +144,9 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     override fun onReconfiguration(host: Host, reconfiguration: Reconfiguration) {
         val oldState = state as ParentReady
         assertOrExit(host == oldState.parent, "Parent mismatch")
-
-        val metadata = mutableListOf<Metadata>()
-        for (i in 0 until reconfiguration.grandparents.size + 1)
-            metadata.add(Metadata(HybridTimestamp()))
-
+        val metadata = reconfiguration.downstream.timestamps.map { it -> Metadata(it) }
         state = ParentReady(host, reconfiguration.grandparents, metadata)
-
-        onParentDownstreamMetadata(host, reconfiguration.downstream)
+        assertOrExit(metadata.size == reconfiguration.grandparents.size + 1, "Wrong number of timestamps")
 
         //TODO notification to clients directly?
 
@@ -160,10 +155,24 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
             sendMessage(reconfigurationMessage, childState.child, TCPChannel.CONNECTION_IN)
     }
 
+    /* ------------------------------- TIMERS ------------------------------------------- */
+    override fun propagateTime() {
+        updateTsAndStableTs()
+        if (state is ParentReady)
+            sendMessage(UpstreamMetadata(stableTimestamp), (state as ParentReady).parent, TCPChannel.CONNECTION_OUT)
+
+        if (state is Datacenter) {
+            val downstream = buildDownstreamMessage()
+            for (childState in children.values) {
+                if (childState is ChildReady)
+                    sendMessage(downstream, childState.child, TCPChannel.CONNECTION_IN)
+            }
+        }
+    }
+
     override fun onParentDownstreamMetadata(host: Host, msg: DownstreamMetadata) {
         val ready = state as ParentReady
         assertOrExit(host == ready.parent, "Parent mismatch")
-
         assertOrExit(msg.timestamps.size == ready.grandparents.size + 1, "Wrong number of timestamps")
         assertOrExit(msg.timestamps.size == ready.metadata.size, "Wrong number of timestamps")
 
@@ -174,18 +183,34 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
         //TODO handle persistence (send to storage)
 
-
         //TODO re-send new persistence message downstream
         //TODO remove from mapper (both local and all children if persistence is infinite)
 
-        if (state is ParentReady || state is Datacenter) {
-            val downstream = buildDownstreamMessage()
-            for (childState in children.values) {
-                if (childState is ChildReady)
-                    sendMessage(downstream, childState.child, TCPChannel.CONNECTION_IN)
-            }
+        val downstream = buildDownstreamMessage()
+        for (childState in children.values) {
+            if (childState is ChildReady)
+                sendMessage(downstream, childState.child, TCPChannel.CONNECTION_IN)
         }
+    }
 
+    private fun buildDownstreamMessage(): DownstreamMetadata {
+        val timestamps = mutableListOf<HybridTimestamp>()
+        timestamps.add(stableTimestamp)
+        if (state is ParentReady) {
+            for (p in (state as ParentReady).metadata)
+                timestamps.add(p.timestamp)
+        }
+        return DownstreamMetadata(timestamps)
+    }
+
+    private fun buildReconfigurationMessage(): Reconfiguration {
+        val grandparents = mutableListOf<Host>()
+        if (state is ParentReady) {
+            grandparents.add((state as ParentReady).parent)
+            for (p in (state as ParentReady).grandparents)
+                grandparents.add(p)
+        }
+        return Reconfiguration(grandparents, buildDownstreamMessage())
     }
 
     override fun parentConnectionLost(host: Host, cause: Throwable?) {
@@ -250,7 +275,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
         val transformed = mutableListOf<Pair<WriteID, RemoteWrite>>()
 
-        msg.writes.forEach {  (id, write) ->
+        msg.writes.forEach { (id, write) ->
             val localPersistenceId = idCounter++
             sendReply(PropagateWriteReply(id, write), Storage.ID)
             childState.highestPersistenceIdSeen = id.persistence
@@ -273,8 +298,13 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         when (val parentState = state) {
             is ParentSync, is ParentConnecting, is ParentConnected ->
                 pendingParentRemoteWrites.add(Pair(writeID, req.write))
+
             is ParentReady ->
-                sendMessage(UpstreamWrite(listOf(Pair(writeID, req.write))), parentState.parent, TCPChannel.CONNECTION_OUT)
+                sendMessage(
+                    UpstreamWrite(listOf(Pair(writeID, req.write))),
+                    parentState.parent,
+                    TCPChannel.CONNECTION_OUT
+                )
         }
 
         propagateWritesToChildren(listOf(Pair(writeID, req.write)))
@@ -313,35 +343,6 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     override fun onChildDisconnected(child: Host) {
         children.remove(child)!!
         logger.info("CHILD DISCONNECTED $child")
-    }
-
-    /* ------------------------------- TIMERS ------------------------------------------- */
-    override fun propagateTime() {
-        updateTsAndStableTs()
-        if (state is ParentReady)
-            sendMessage(UpstreamMetadata(stableTimestamp), (state as ParentReady).parent, TCPChannel.CONNECTION_OUT)
-    }
-
-    /* ------------------------------------ UTILS ------------------------------------------------ */
-
-    private fun buildDownstreamMessage(): DownstreamMetadata {
-        val timestamps = mutableListOf<HybridTimestamp>()
-        timestamps.add(stableTimestamp)
-        if (state is ParentReady) {
-            for (p in (state as ParentReady).metadata)
-                timestamps.add(p.timestamp)
-        }
-        return DownstreamMetadata(timestamps)
-    }
-
-    private fun buildReconfigurationMessage(): Reconfiguration {
-        val grandparents = mutableListOf<Host>()
-        if (state is ParentReady) {
-            grandparents.add((state as ParentReady).parent)
-            for (p in (state as ParentReady).grandparents)
-                grandparents.add(p)
-        }
-        return Reconfiguration(grandparents, buildDownstreamMessage())
     }
 
     private fun updateTsAndStableTs() {
@@ -436,5 +437,6 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
             exitProcess(1)
         }
     }
+
     data class LocalOpMapping(val treeId: Int, val storageId: Long)
 }
