@@ -8,7 +8,7 @@ import storage.FetchedObject
 data class ObjectReplicationReply(val items: List<FetchedObject>) : ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 204
+        const val ID: Short = 203
     }
 
     object Serializer : ISerializer<ObjectReplicationReply> {

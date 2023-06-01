@@ -11,7 +11,7 @@ data class PartitionReplicationReply(val partition: String, val objects: List<Pa
     ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 210
+        const val ID: Short = 204
     }
 
     object Serializer : ISerializer<PartitionReplicationReply> {

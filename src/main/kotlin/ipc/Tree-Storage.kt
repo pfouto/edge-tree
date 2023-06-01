@@ -5,6 +5,7 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 import pt.unl.fct.di.novasys.network.data.Host
 import storage.*
 import tree.messaging.up.SyncRequest
+import tree.utils.WriteID
 
 /**
  * From Tree to Storage requesting the data difference to send to synchronizing child
@@ -135,7 +136,7 @@ class FetchPartitionRep(val child: Host, val partition: String, val objects: Lis
 /**
  * From Tree to Storage with a remote write to be applied locally
  */
-class PropagateWriteReply(val write: RemoteWrite) : ProtoReply(ID) {
+class PropagateWriteReply(val id: WriteID, val write: RemoteWrite) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 209
     }

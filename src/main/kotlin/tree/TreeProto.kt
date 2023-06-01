@@ -15,7 +15,7 @@ import tree.messaging.up.*
 import java.net.Inet4Address
 import java.util.*
 
-abstract class TreeProto(private val address: Inet4Address, config: Config) : GenericProtocol(NAME, ID) {
+abstract class TreeProto(val address: Inet4Address, config: Config) : GenericProtocol(NAME, ID) {
 
     companion object {
         const val NAME = "Tree"
@@ -149,7 +149,7 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
         registerReplyHandler(FetchObjectsRep.ID) { reply: FetchObjectsRep, _ -> onFetchObjectsReply(reply) }
         registerReplyHandler(FetchPartitionRep.ID) { reply: FetchPartitionRep, _ -> onFetchPartitionReply(reply) }
 
-        registerRequestHandler(PropagateWriteRequest.ID) { req: PropagateWriteRequest, _ -> onPropagateWrite(req) }
+        registerRequestHandler(PropagateWriteRequest.ID) { req: PropagateWriteRequest, _ -> onPropagateLocalWrite(req) }
 
         registerReplyHandler(FetchMetadataRep.ID) { req: FetchMetadataRep, _ -> onFetchMetadataReply(req) }
         registerReplyHandler(DataDiffReply.ID) { req: DataDiffReply, _ -> onDataDiffReply(req) }
@@ -189,7 +189,7 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
     abstract fun onChildObjReplicationRequest(child: Host, msg: ObjectReplicationRequest)
     abstract fun onChildPartitionReplicationRequest(from: Host, msg: PartitionReplicationRequest, )
     abstract fun onChildSyncRequest(child: Host, msg: SyncRequest)
-    abstract fun onUpstreamWrite(from: Host, msg: UpstreamWrite)
+    abstract fun onUpstreamWrite(child: Host, msg: UpstreamWrite)
 
     //Timers
     abstract fun propagateTime()
@@ -202,5 +202,5 @@ abstract class TreeProto(private val address: Inet4Address, config: Config) : Ge
     abstract fun onFetchMetadataReply(reply: FetchMetadataRep)
     abstract fun onDataDiffReply(reply: DataDiffReply)
 
-    abstract fun onPropagateWrite(request: PropagateWriteRequest)
+    abstract fun onPropagateLocalWrite(req: PropagateWriteRequest)
 }

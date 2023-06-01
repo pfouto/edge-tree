@@ -12,13 +12,14 @@ import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.network.data.Host
 import tree.TreeProto
 import tree.utils.HybridTimestamp
+import tree.utils.WriteID
 import java.net.Inet4Address
 import java.util.*
 import kotlin.system.exitProcess
 
 class Storage(val address: Inet4Address, private val config: Config) : GenericProtocol(NAME, ID) {
 
-    //TODO if datacenter, persistence is instant!
+    //TODO if datacenter, persistence is instant (a.k.a very big number)!
 
     companion object {
         const val NAME = "Storage"
@@ -55,7 +56,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerRequestHandler(OpRequest.ID) { req: OpRequest, _ -> onLocalOpRequest(req) }
         registerRequestHandler(FetchObjectsReq.ID) { req: FetchObjectsReq, _ -> onFetchObjectReq(req) }
         registerRequestHandler(FetchPartitionReq.ID) { req: FetchPartitionReq, _ -> onFetchPartitionReq(req) }
-        registerReplyHandler(PropagateWriteReply.ID) { rep: PropagateWriteReply, _ -> onRemoteWrite(rep.write) }
+        registerReplyHandler(PropagateWriteReply.ID) { rep: PropagateWriteReply, _ -> onRemoteWrite(rep.id, rep.write) }
         registerReplyHandler(ObjReplicationRep.ID) { rep: ObjReplicationRep, _ -> onObjReplicationReply(rep) }
         registerReplyHandler(PersistenceUpdate.ID) { rep: PersistenceUpdate, _ -> onPersistence(rep) }
         registerReplyHandler(PartitionReplicationRep.ID) { rep: PartitionReplicationRep, _ ->
@@ -307,11 +308,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
     }
 
-    private fun onRemoteWrite(write: RemoteWrite) {
+    private fun onRemoteWrite(id: WriteID, write: RemoteWrite) {
         assertOrExit(
             dataIndex.containsObject(write.objectIdentifier),
             "Received write for non-existent object ${write.objectIdentifier}"
         )
+
+        //TODO print id for log purposes (without persistence id)
 
         //TODO check GLC / HLC / whatever before executing blindly?
         // Maybe not, because we receive in order...

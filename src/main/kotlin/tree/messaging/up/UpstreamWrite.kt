@@ -4,11 +4,11 @@ import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
 import storage.RemoteWrite
-import tree.utils.HybridTimestamp
+import tree.utils.WriteID
 
-data class UpstreamWrite(val writes: List<RemoteWrite>) : ProtoMessage(ID) {
+data class UpstreamWrite(val writes: List<Pair<WriteID, RemoteWrite>>) : ProtoMessage(ID) {
 
-    constructor(singleWrite: RemoteWrite) : this(listOf(singleWrite))
+    constructor(writeID: WriteID, singleWrite: RemoteWrite) : this(listOf(Pair(writeID, singleWrite)))
 
     companion object {
         const val ID: Short = 215
@@ -17,17 +17,23 @@ data class UpstreamWrite(val writes: List<RemoteWrite>) : ProtoMessage(ID) {
     object Serializer : ISerializer<UpstreamWrite> {
         override fun serialize(obj: UpstreamWrite, buffer: ByteBuf) {
             buffer.writeInt(obj.writes.size)
-            for (ts in obj.writes) {
-                RemoteWrite.serialize(ts, buffer)
+            for (op in obj.writes) {
+                buffer.writeInt(op.first.ip)
+                buffer.writeInt(op.first.counter)
+                buffer.writeInt(op.first.persistence)
+                RemoteWrite.serialize(op.second, buffer)
             }
         }
 
         override fun deserialize(buffer: ByteBuf): UpstreamWrite {
             val nWrites = buffer.readInt()
-            val writes = mutableListOf<RemoteWrite>()
+            val writes = mutableListOf<Pair<WriteID, RemoteWrite>>()
             for (i in 0 until nWrites) {
-                val ts = RemoteWrite.deserialize(buffer)
-                writes.add(ts)
+                val ip = buffer.readInt()
+                val counter = buffer.readInt()
+                val persistence = buffer.readInt()
+                val rw = RemoteWrite.deserialize(buffer)
+                writes.add(Pair(WriteID(ip, counter, persistence), rw))
             }
             return UpstreamWrite(writes)
         }

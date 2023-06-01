@@ -18,7 +18,7 @@ abstract class ChildMeta(
 class ChildSync(
     child: Host,
     objects: DataIndex,
-    val pendingWrites: MutableList<RemoteWrite> = mutableListOf(),
+    val pendingWrites: MutableList<Pair<WriteID, RemoteWrite>> = mutableListOf(),
     childStableTime: HybridTimestamp = HybridTimestamp(),
 ) :
     ChildMeta(child, objects, childStableTime)
@@ -27,6 +27,11 @@ class ChildReady(
     child: Host,
     objects: DataIndex,
     childStableTime: HybridTimestamp = HybridTimestamp(),
-    val pendingObjects: MutableMap<ObjectIdentifier, MutableList<RemoteWrite>> = mutableMapOf(),
-    val pendingFullPartitions: MutableMap<String, MutableList<RemoteWrite>> = mutableMapOf(),
+    val pendingObjects: MutableMap<ObjectIdentifier, MutableList<Pair<WriteID, RemoteWrite>>> = mutableMapOf(),
+    val pendingFullPartitions: MutableMap<String, MutableList<Pair<WriteID, RemoteWrite>>> = mutableMapOf(),
+    val persistenceMapper: MutableList<ChildOpMapping> = mutableListOf(),
+    var highestPersistenceIdSeen: Int = 0
 ) : ChildMeta(child, objects, childStableTime)
+
+
+data class ChildOpMapping(val localId: Int, val childId: Int)
