@@ -33,10 +33,10 @@ fun main(args: Array<String>) {
 
         val babel = Babel.getInstance()
 
-        val treeProto = Tree(me, config)
+        val storage = Storage(me, config)
+        val treeProto = Tree(me, config, storage::getTimestamp)
         val hyParFlood = HyParFlood(me, config)
         val manager = Manager(me, config)
-        val storage = Storage(me, config)
         val clientProxy = ClientProxy(me, config)
 
         babel.registerProtocol(treeProto)

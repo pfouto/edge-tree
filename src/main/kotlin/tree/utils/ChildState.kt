@@ -4,6 +4,7 @@ import pt.unl.fct.di.novasys.network.data.Host
 import storage.DataIndex
 import storage.ObjectIdentifier
 import storage.RemoteWrite
+import java.util.*
 
 abstract class ChildState(val child: Host)
 
@@ -29,7 +30,7 @@ class ChildReady(
     childStableTime: HybridTimestamp = HybridTimestamp(),
     val pendingObjects: MutableMap<ObjectIdentifier, MutableList<Pair<WriteID, RemoteWrite>>> = mutableMapOf(),
     val pendingFullPartitions: MutableMap<String, MutableList<Pair<WriteID, RemoteWrite>>> = mutableMapOf(),
-    val persistenceMapper: MutableList<ChildOpMapping> = mutableListOf(),
+    val persistenceMapper: TreeMap<Int, Int> = TreeMap(),
     var highestPersistenceIdSeen: Int = 0
 ) : ChildMeta(child, objects, childStableTime)
 

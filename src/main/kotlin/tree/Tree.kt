@@ -1,7 +1,6 @@
 package tree
 
 import Config
-import getTimeMillis
 import ipc.*
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
@@ -15,17 +14,17 @@ import tree.messaging.up.*
 import tree.utils.*
 import java.net.Inet4Address
 import java.nio.ByteBuffer
+import java.util.*
+import java.util.function.Supplier
 import kotlin.system.exitProcess
 
-class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
+class Tree(address: Inet4Address, config: Config, private val timestampReader: Supplier<HybridTimestamp>) :
+    TreeProto(address, config) {
 
     companion object {
         private val logger = LogManager.getLogger()
         const val MAX_RECONNECT_RETRIES = 3
     }
-
-    //Self
-    private var timestamp: HybridTimestamp = HybridTimestamp(getTimeMillis(), 0)
 
     //Children
     private var stableTimestamp: HybridTimestamp = HybridTimestamp(0, 0)
@@ -43,7 +42,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     private var idCounter = 0
 
     //Persistence
-    private val localPersistenceMapper = mutableListOf<LocalOpMapping>()
+    private val localPersistenceMapper = TreeMap<Int, Long>()
 
 
     override fun onActivate(notification: ActivateNotification) {
@@ -98,7 +97,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         if (oldState.parent != reply.parent) return
 
         state = ParentSync(oldState.parent, oldState.grandparents)
-        updateTsAndStableTs()
+        updateStableTs()
         sendMessage(
             SyncRequest(UpstreamMetadata(stableTimestamp), reply.fullPartitions, reply.partialPartitions),
             reply.parent, TCPChannel.CONNECTION_OUT
@@ -120,7 +119,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         val childState = children[reply.child]!! as ChildSync
         children[reply.child] = ChildReady(reply.child, childState.objects, childState.childStableTime)
         logger.info("CHILD READY ${reply.child}")
-        updateTsAndStableTs()
+        updateStableTs()
         sendMessage(SyncResponse(buildReconfigurationMessage(), reply.data), reply.child, TCPChannel.CONNECTION_IN)
         sendMessage(DownstreamWrite(childState.pendingWrites), reply.child, TCPChannel.CONNECTION_IN)
     }
@@ -144,11 +143,11 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
     override fun onReconfiguration(host: Host, reconfiguration: Reconfiguration) {
         val oldState = state as ParentReady
         assertOrExit(host == oldState.parent, "Parent mismatch")
-        val metadata = reconfiguration.downstream.timestamps.map { it -> Metadata(it) }
+        val metadata = reconfiguration.timestamps.map { Metadata(it) }
         state = ParentReady(host, reconfiguration.grandparents, metadata)
         assertOrExit(metadata.size == reconfiguration.grandparents.size + 1, "Wrong number of timestamps")
 
-        //TODO notification to clients directly?
+        //TODO notification to clients directly? Or to storage that redirects to clients
 
         val reconfigurationMessage = buildReconfigurationMessage()
         for (childState in children.values)
@@ -157,15 +156,18 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
     /* ------------------------------- TIMERS ------------------------------------------- */
     override fun propagateTime() {
-        updateTsAndStableTs()
+        updateStableTs()
         if (state is ParentReady)
             sendMessage(UpstreamMetadata(stableTimestamp), (state as ParentReady).parent, TCPChannel.CONNECTION_OUT)
 
         if (state is Datacenter) {
-            val downstream = buildDownstreamMessage()
+            val timestamps = fetchUpstreamTimestamps()
             for (childState in children.values) {
-                if (childState is ChildReady)
-                    sendMessage(downstream, childState.child, TCPChannel.CONNECTION_IN)
+                if (childState is ChildReady) {
+                    //Local persistence mappers are empty for datacenter
+                    val persistence = mapOf(Int.MAX_VALUE to childState.highestPersistenceIdSeen)
+                    sendMessage(DownstreamMetadata(timestamps, persistence), childState.child, TCPChannel.CONNECTION_IN)
+                }
             }
         }
     }
@@ -176,31 +178,55 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         assertOrExit(msg.timestamps.size == ready.grandparents.size + 1, "Wrong number of timestamps")
         assertOrExit(msg.timestamps.size == ready.metadata.size, "Wrong number of timestamps")
 
+        //Handle timestamps
         for (i in 0 until msg.timestamps.size)
             ready.metadata[i].timestamp = msg.timestamps[i]
 
         logger.info("PARENT-METADATA ${ready.metadata.joinToString(":", prefix = "[", postfix = "]")}")
 
-        //TODO handle persistence (send to storage)
+        //Handle local persistence
+        val localPersistenceUpdates = mutableMapOf<Int, Long>()
+        msg.persistence.forEach { (level, highestOp) ->
+            val value = localPersistenceMapper.floorEntry(highestOp).value
+            if (value != null) {
+                localPersistenceUpdates[level] = value
+                if (level == Int.MAX_VALUE)
+                    localPersistenceMapper.headMap(highestOp, true).clear()
+            }
+        }
+        sendReply(PersistenceUpdate(localPersistenceUpdates), Storage.ID)
 
-        //TODO re-send new persistence message downstream
-        //TODO remove from mapper (both local and all children if persistence is infinite)
+        val timestamps = fetchUpstreamTimestamps()
 
-        val downstream = buildDownstreamMessage()
+        //Handle child persistence
         for (childState in children.values) {
-            if (childState is ChildReady)
-                sendMessage(downstream, childState.child, TCPChannel.CONNECTION_IN)
+            if (childState is ChildReady) {
+                val childPersistence = mutableMapOf<Int, Int>()
+                msg.persistence.forEach { (level, highestOp) ->
+                    val value = childState.persistenceMapper.floorEntry(highestOp).value
+                    if (value != null) {
+                        childPersistence[level] = value
+                        if (level == Int.MAX_VALUE)
+                            childState.persistenceMapper.headMap(highestOp, true).clear()
+                    }
+                }
+                sendMessage(
+                    DownstreamMetadata(timestamps, childPersistence),
+                    childState.child,
+                    TCPChannel.CONNECTION_IN
+                )
+            }
         }
     }
 
-    private fun buildDownstreamMessage(): DownstreamMetadata {
+    private fun fetchUpstreamTimestamps(): List<HybridTimestamp> {
         val timestamps = mutableListOf<HybridTimestamp>()
         timestamps.add(stableTimestamp)
         if (state is ParentReady) {
             for (p in (state as ParentReady).metadata)
                 timestamps.add(p.timestamp)
         }
-        return DownstreamMetadata(timestamps)
+        return timestamps
     }
 
     private fun buildReconfigurationMessage(): Reconfiguration {
@@ -210,7 +236,7 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
             for (p in (state as ParentReady).grandparents)
                 grandparents.add(p)
         }
-        return Reconfiguration(grandparents, buildDownstreamMessage())
+        return Reconfiguration(grandparents, fetchUpstreamTimestamps())
     }
 
     override fun parentConnectionLost(host: Host, cause: Throwable?) {
@@ -277,10 +303,15 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
 
         msg.writes.forEach { (id, write) ->
             val localPersistenceId = idCounter++
-            sendReply(PropagateWriteReply(id, write), Storage.ID)
+            val newId = WriteID(id.ip, id.counter, localPersistenceId)
+
+            sendReply(PropagateWriteReply(newId, write), Storage.ID)
+
             childState.highestPersistenceIdSeen = id.persistence
-            childState.persistenceMapper.add(ChildOpMapping(localPersistenceId, id.persistence))
-            transformed.add(Pair(WriteID(id.ip, id.counter, localPersistenceId), write))
+            if (state !is Datacenter) {
+                childState.persistenceMapper[localPersistenceId] = id.persistence
+                transformed.add(Pair(newId, write))
+            }
         }
 
         when (val parentState = state) {
@@ -293,7 +324,8 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         val opID = idCounter++
         val writeID = WriteID(ipInt, opID, opID)
 
-        localPersistenceMapper.add(LocalOpMapping(opID, req.id))
+        if (state !is Datacenter)
+            localPersistenceMapper[opID] = req.id
 
         when (val parentState = state) {
             is ParentSync, is ParentConnecting, is ParentConnected ->
@@ -345,9 +377,8 @@ class Tree(address: Inet4Address, config: Config) : TreeProto(address, config) {
         logger.info("CHILD DISCONNECTED $child")
     }
 
-    private fun updateTsAndStableTs() {
-        timestamp = timestamp.updatedTs()
-        var newStable = timestamp
+    private fun updateStableTs() {
+        var newStable = timestampReader.get()
         for (child in children.values.filterIsInstance<ChildReady>())
             newStable = child.childStableTime.min(newStable)
         stableTimestamp = newStable

@@ -13,10 +13,6 @@ data class DownstreamMetadata(val timestamps: List<HybridTimestamp>, val persist
         const val ID: Short = 201
     }
 
-    override fun toString(): String {
-        return "DownstreamMetadata(timestamps=$timestamps)"
-    }
-
     object Serializer : ISerializer<DownstreamMetadata> {
         override fun serialize(msg: DownstreamMetadata, out: ByteBuf) {
             out.writeInt(msg.timestamps.size)

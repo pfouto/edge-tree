@@ -1,6 +1,7 @@
 package storage
 
 import Config
+import getTimeMillis
 import ipc.*
 import org.apache.logging.log4j.LogManager
 import proxy.ClientProxy
@@ -15,11 +16,10 @@ import tree.utils.HybridTimestamp
 import tree.utils.WriteID
 import java.net.Inet4Address
 import java.util.*
+import java.util.concurrent.locks.Lock
 import kotlin.system.exitProcess
 
 class Storage(val address: Inet4Address, private val config: Config) : GenericProtocol(NAME, ID) {
-
-    //TODO if datacenter, persistence is instant (a.k.a very big number)!
 
     companion object {
         const val NAME = "Storage"
@@ -37,12 +37,17 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private lateinit var dataIndex: DataIndex
 
+    private var amDc: Boolean = false
+
+    //Self
+    private val localTimeLock = Object()
+    @Volatile private var localTime: HybridTimestamp = HybridTimestamp(getTimeMillis(), 0)
+
     // Pending reads and data requests for each pending object
     private val pendingObjects = mutableMapOf<ObjectIdentifier, Pair<MutableList<Long>, MutableList<Host>>>()
 
     // Pending data requests for each pending full partition (there are no reads on full partitions)
     private val pendingFullPartitions = mutableMapOf<String, MutableList<Host>>()
-
 
     private val pendingPersistence = mutableMapOf<Int, MutableList<Long>>()
 
@@ -73,12 +78,14 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private fun onActivate(notification: ActivateNotification) {
 
+        amDc = notification.contact == null
+
         dataIndex = when {
             notification.contact != null -> DataIndex()
             else -> DataIndex.DCDataIndex()
         }
 
-        storageWrapper = if (notification.contact == null) //datacenter
+        storageWrapper = if (amDc) //datacenter
             when (config.dc_storage_type) {
                 CASSANDRA_TYPE -> CassandraWrapper()
                 IN_MEMORY_TYPE -> InMemoryWrapper()
@@ -161,7 +168,10 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     private fun onLocalOpRequest(req: OpRequest) {
         when (req.op) {
             is WriteOperation -> {
-                val hlc = currentHlc()
+                synchronized(localTimeLock) {
+                    localTime = localTime.nextTimestamp()
+                }
+                val hlc = localTime
                 val objId = ObjectIdentifier(req.op.partition, req.op.key)
                 val objData = ObjectData(req.op.value, ObjectMetadata(hlc, lww))
                 //Even if not present, we can complete the operation. After fetching the data,
@@ -182,7 +192,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
                 //if persistence, also add to pending (different from read and migration pending)
                 if (req.op.persistence > 0) {
-                    if (req.op.persistence == 1.toShort())
+                    if (req.op.persistence == 1.toShort() || amDc)
                         sendReply(ClientWritePersistent(req.id), ClientProxy.ID)
                     else
                         pendingPersistence.computeIfAbsent(req.op.persistence.toInt()) { mutableListOf() }.add(req.id)
@@ -314,6 +324,10 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             "Received write for non-existent object ${write.objectIdentifier}"
         )
 
+        synchronized(localTimeLock) {
+            localTime = localTime.mergeTimestamp(write.objectData.metadata.hlc)
+        }
+
         //TODO print id for log purposes (without persistence id)
 
         //TODO check GLC / HLC / whatever before executing blindly?
@@ -326,20 +340,31 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
      * A persistence update was received from the tree
      */
     private fun onPersistence(rep: PersistenceUpdate) {
+        assertOrExit(!amDc, "Received persistence update in DC mode")
+
         rep.persistenceMap.forEach { (persistenceLevel, id) ->
-            val pending = pendingPersistence[persistenceLevel]
-            if (pending != null) {
-                while (pending.isNotEmpty() && pending.first() <= id) {
-                    sendReply(ClientWritePersistent(pending.removeFirst()), ClientProxy.ID)
+            if (persistenceLevel == Int.MAX_VALUE) {
+                pendingPersistence.forEach { (_, opList) ->
+                    while (opList.isNotEmpty() && opList.first() <= id) {
+                        sendReply(ClientWritePersistent(opList.removeFirst()), ClientProxy.ID)
+                    }
+                }
+            } else {
+                val pending = pendingPersistence[persistenceLevel]
+                if (pending != null) {
+                    while (pending.isNotEmpty() && pending.first() <= id) {
+                        sendReply(ClientWritePersistent(pending.removeFirst()), ClientProxy.ID)
+                    }
                 }
             }
         }
     }
 
-    private fun currentHlc(): HybridTimestamp {
-        //Maybe we don't need this... We just need the stable HLC received from the tree to know when to
-        // execute remote ops... Maybe we do to tag writes...
-        TODO("Not yet implemented")
+    fun getTimestamp(): HybridTimestamp{
+        synchronized(localTimeLock){
+            localTime = localTime.nextTimestamp()
+        }
+        return localTime
     }
 
     private fun onDeactivate() {

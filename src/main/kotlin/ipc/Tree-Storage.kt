@@ -151,8 +151,6 @@ class PropagateWriteRequest(val id: Long, val write: RemoteWrite) : ProtoRequest
     }
 }
 
-//Tree -> Storage
-//TODO persistence parameter
 class PersistenceUpdate(val persistenceMap: Map<Int, Long>) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 211

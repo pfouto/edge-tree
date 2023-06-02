@@ -6,16 +6,22 @@ import pt.unl.fct.di.novasys.network.ISerializer
 
 class HybridTimestamp(val logical: Long = 0, val counter: Int = 0) {
 
-    fun nextTs(): HybridTimestamp {
+    fun nextTimestamp(): HybridTimestamp {
         val newLogical = logical.coerceAtLeast(getTimeMillis())
         val newCounter = if (logical == newLogical) counter + 1 else 0
         return HybridTimestamp(newLogical, newCounter)
     }
 
-    fun updatedTs(): HybridTimestamp {
-        val newLogical = logical.coerceAtLeast(getTimeMillis())
-        val newCounter = if (logical == newLogical) counter else 0
-        return HybridTimestamp(newLogical, newCounter)
+    fun mergeTimestamp(other: HybridTimestamp): HybridTimestamp {
+        val newLogical = getTimeMillis().coerceAtLeast(logical.coerceAtLeast(other.logical))
+        return if(newLogical == logical && newLogical == other.logical)
+            HybridTimestamp(newLogical, counter.coerceAtLeast(other.counter) + 1)
+        else if (newLogical == logical)
+            HybridTimestamp(newLogical, counter + 1)
+        else if (newLogical == other.logical)
+            HybridTimestamp(newLogical, other.counter + 1)
+        else
+            HybridTimestamp(newLogical, 0)
     }
 
     fun isAfter(other: HybridTimestamp): Boolean {
