@@ -109,7 +109,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         assertOrExit(childState is ChildConnected, "Sync message while not connected $child")
 
         children[child] = ChildSync(child, DataIndex.fromSyncRequest(msg))
-        logger.info("CHILD SYNC $ child")
+        logger.info("CHILD SYNC $child")
 
         sendRequest(DataDiffRequest(child, msg), Storage.ID)
         onChildUpstreamMetadata(child, msg.upstream)
@@ -125,7 +125,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     }
 
     override fun onParentSyncResponse(parent: Host, msg: SyncResponse) {
-        val oldState = state as ParentConnected
+        val oldState = state as ParentSync
         assertOrExit(parent == oldState.parent, "Parent mismatch")
         state = ParentReady(parent, emptyList(), emptyList())
 
@@ -151,7 +151,8 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
 
         val reconfigurationMessage = buildReconfigurationMessage()
         for (childState in children.values)
-            sendMessage(reconfigurationMessage, childState.child, TCPChannel.CONNECTION_IN)
+            if(childState is ChildReady)
+                sendMessage(reconfigurationMessage, childState.child, TCPChannel.CONNECTION_IN)
     }
 
     /* ------------------------------- TIMERS ------------------------------------------- */
@@ -187,7 +188,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         //Handle local persistence
         val localPersistenceUpdates = mutableMapOf<Int, Long>()
         msg.persistence.forEach { (level, highestOp) ->
-            val value = localPersistenceMapper.floorEntry(highestOp).value
+            val value = localPersistenceMapper.floorEntry(highestOp)?.value
             if (value != null) {
                 localPersistenceUpdates[level] = value
                 if (level == Int.MAX_VALUE)
@@ -203,7 +204,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             if (childState is ChildReady) {
                 val childPersistence = mutableMapOf<Int, Int>()
                 msg.persistence.forEach { (level, highestOp) ->
-                    val value = childState.persistenceMapper.floorEntry(highestOp).value
+                    val value = childState.persistenceMapper.floorEntry(highestOp)?.value
                     if (value != null) {
                         childPersistence[level] = value
                         if (level == Int.MAX_VALUE)
@@ -468,6 +469,4 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             exitProcess(1)
         }
     }
-
-    data class LocalOpMapping(val treeId: Int, val storageId: Long)
 }

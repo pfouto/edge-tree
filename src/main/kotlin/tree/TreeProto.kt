@@ -67,6 +67,8 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
         registerMessageSerializer(channel, ObjectReplicationReply.ID, ObjectReplicationReply.Serializer)
         registerMessageSerializer(channel, PartitionReplicationRequest.ID, PartitionReplicationRequest.Serializer)
         registerMessageSerializer(channel, PartitionReplicationReply.ID, PartitionReplicationReply.Serializer)
+        registerMessageSerializer(channel, UpstreamWrite.ID, UpstreamWrite.Serializer)
+        registerMessageSerializer(channel, DownstreamWrite.ID, DownstreamWrite.Serializer)
 
         registerMessageHandler(
             channel,
@@ -157,7 +159,7 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
     }
 
     override fun init(props: Properties) {
-        logger.info("Bind address $address")
+        logger.debug("Bind address {}", address)
 
         setupPeriodicTimer(PropagateTimer(), propagateTimeout, propagateTimeout)
     }

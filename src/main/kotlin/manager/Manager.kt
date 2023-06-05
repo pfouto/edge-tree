@@ -19,6 +19,8 @@ import pt.unl.fct.di.novasys.network.data.Host
 import java.io.FileInputStream
 import java.net.Inet4Address
 import java.util.*
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 class Manager(private val selfAddress: Inet4Address, private val config: Config) : GenericProtocol(NAME, ID) {
 
@@ -36,7 +38,9 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
     }
 
     enum class TreeBuilder {
-        Random, Static
+        Random,  //Parent wakes up a random node
+        Static,  //Parent wakes up a child node from a static tree
+        Location //Child connects to best parent based on location after parent wakes up
     }
 
     private var state: State = State.INACTIVE
@@ -51,7 +55,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
     private val regionalDatacenter: String
     private val amDatacenter: Boolean
 
-    private val location: Pair<Int, Int> = Pair(0, 0)
+    private val myLocation: Location
     private val resources: Int = 0
 
     private val membership: MutableMap<Inet4Address, Pair<BroadcastState, Long>>
@@ -62,6 +66,8 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
     private val treeBuilder: TreeBuilder
     private val staticTree: Map<String, List<String>>?
     private var treeBuilderTimer = -1L
+
+    var startTime: Long = Long.MAX_VALUE
 
     init {
         val channelProps = Properties()
@@ -91,6 +97,8 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
         regionalDatacenter = config.datacenter
         amDatacenter = regionalDatacenter == config.hostname
 
+        myLocation = Location(config.locationX, config.locationY)
+
         broadcastInterval = config.man_broadcast_interval
         membershipExpiration = broadcastInterval * 3
 
@@ -114,22 +122,22 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
             logger.warn("Starting asleep")
             sendRequest(InitRequest(Inet4Address.getByName(regionalDatacenter) as Inet4Address), HyParFlood.ID)
         }
-        logger.info("Bind address $selfAddress")
+        logger.debug("Bind address {}", selfAddress)
 
+        startTime = System.currentTimeMillis()
         setupPeriodicTimer(BroadcastTimer(), 0, broadcastInterval)
-    }
-
-    private fun onActivate() {
-        state = State.ACTIVE
-        sendRequest(BroadcastRequest(BroadcastState(selfAddress, location, resources, state)), HyParFlood.ID)
-
         treeBuilderTimer =
             setupPeriodicTimer(TreeBuilderTimer(), config.tree_builder_interval, config.tree_builder_interval)
     }
 
+    private fun onActivate() {
+        state = State.ACTIVE
+        sendRequest(BroadcastRequest(BroadcastState(selfAddress, myLocation, resources, state)), HyParFlood.ID)
+    }
+
     private fun onDeactivate() {
         state = State.INACTIVE
-        sendRequest(BroadcastRequest(BroadcastState(selfAddress, location, resources, state)), HyParFlood.ID)
+        sendRequest(BroadcastRequest(BroadcastState(selfAddress, myLocation, resources, state)), HyParFlood.ID)
         if (treeBuilderTimer != -1L) {
             cancelTimer(treeBuilderTimer)
             treeBuilderTimer = -1
@@ -145,40 +153,71 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
     }
 
     private fun onTreeBuilderTimer(timer: TreeBuilderTimer, timerId: Long) {
-        if (state == State.INACTIVE)
-            return
 
-        if (treeBuilder == TreeBuilder.Random) {
-            val sortedFilter = membership.filterValues { it.first.state == State.INACTIVE }
-                .toSortedMap(compareBy { it.hostAddress })
-            if (!sortedFilter.isEmpty()) {
-                val toWake = Host(sortedFilter.keys.first(), PORT)
-                logger.info("Waking up $toWake")
-                openConnection(toWake)
-                sendMessage(WakeMessage(selfAddress), toWake)
+        when (treeBuilder) {
+            TreeBuilder.Random -> {
+                if (state == State.INACTIVE)
+                    return
+
+                val sortedFilter = membership.filterValues { it.first.state == State.INACTIVE }
+                    .toSortedMap(compareBy { it.hostAddress })
+                if (!sortedFilter.isEmpty()) {
+                    val toWake = Host(sortedFilter.keys.first(), PORT)
+                    logger.info("Waking up $toWake")
+                    openConnection(toWake)
+                    sendMessage(WakeMessage(selfAddress), toWake)
+                }
             }
-        } else { //Static tree
-            if (staticTree!!.containsKey(config.hostname)) {
-                for (host in staticTree[config.hostname]!!) {
-                    val toWake = Host(Inet4Address.getByName(host), PORT)
-                    if (membership.containsKey(toWake.address)
-                        && membership[toWake.address]!!.first.state == State.INACTIVE
-                    ) {
-                        logger.info("Waking up $toWake")
-                        openConnection(toWake)
-                        sendMessage(WakeMessage(selfAddress), toWake)
+
+            TreeBuilder.Static -> {
+                if (state == State.INACTIVE)
+                    return
+                if (staticTree!!.containsKey(config.hostname)) {
+                    for (host in staticTree[config.hostname]!!) {
+                        val toWake = Host(Inet4Address.getByName(host), PORT)
+                        if (membership.containsKey(toWake.address)
+                            && membership[toWake.address]!!.first.state == State.INACTIVE
+                        ) {
+                            logger.info("Waking up $toWake")
+                            openConnection(toWake)
+                            sendMessage(WakeMessage(selfAddress), toWake)
+                        }
                     }
                 }
+            }
+
+            TreeBuilder.Location -> {
+                if(state == State.ACTIVE)
+                    return
+
+                if (System.currentTimeMillis() - startTime < config.tree_builder_location_delay) {
+                    logger.info("Waiting for delay of ${config.tree_builder_location_delay}ms, membership size ${membership.size}")
+                    return
+                }
+                val best =
+                    membership.filterValues { it.first.location.distanceToCenter() < myLocation.distanceToCenter() }
+                        .toList().minByOrNull { (_, value) ->
+                            0.5 * value.first.location.distanceToCenter() + value.first.location.distanceTo(myLocation)
+                        }
+                if(best != null){
+                    if (best.second.first.state == State.ACTIVE) {
+                        logger.info("Waking myself. Connecting to ${best.first}, membership size ${membership.size}")
+                        triggerNotification(ActivateNotification(best.first))
+                    } else {
+                        logger.info("Waiting for ${best.first} to wake up, membership size ${membership.size}")
+                    }
+                }
+
             }
         }
     }
 
     private fun onBroadcastTimer(timer: BroadcastTimer, timerId: Long) {
-        sendRequest(BroadcastRequest(BroadcastState(selfAddress, location, resources, state)), HyParFlood.ID)
+        sendRequest(BroadcastRequest(BroadcastState(selfAddress, myLocation, resources, state)), HyParFlood.ID)
         val time = getTimeMillis()
         membership.filterValues { it.second < time }.forEach {
             membership.remove(it.key)
-            logger.info("MEMBERSHIP remove ${it.key}")
+            logger.debug("MEMBERSHIP remove {}", it.key)
         }
     }
 
@@ -190,7 +229,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
 
         membership[newState.address] = Pair(newState, newExpiry)
         if (existingPair == null || newState != existingPair.first) {
-            logger.info("MEMBERSHIP update $newState $newExpiry")
+            logger.debug("MEMBERSHIP update {} {}", newState, newExpiry)
         }
     }
 
@@ -204,7 +243,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
     }
 
     private fun onOutConnectionUp(event: OutConnectionUp, channelId: Int) {
-        logger.debug("Connected out to ${event.node}")
+        logger.debug("Connected out to {}", event.node)
     }
 
     private fun onOutConnectionFailed(event: OutConnectionFailed<ProtoMessage>, channelId: Int) {
@@ -216,10 +255,20 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
     }
 
     private fun onInConnectionUp(event: InConnectionUp, channelId: Int) {
-        logger.debug("Connection in up from ${event.node}")
+        logger.debug("Connection in up from {}", event.node)
     }
 
     private fun onInConnectionDown(event: InConnectionDown, channelId: Int) {
-        logger.debug("Connection in down from ${event.node}")
+        logger.debug("Connection in down from {}", event.node)
+    }
+
+    data class Location(val x: Double, val y: Double) {
+        fun distanceToCenter(): Double {
+            return sqrt(x.pow(2) + y.pow(2))
+        }
+
+        fun distanceTo(other: Location): Double {
+            return sqrt((x - other.x).pow(2) + (y - other.y).pow(2))
+        }
     }
 }

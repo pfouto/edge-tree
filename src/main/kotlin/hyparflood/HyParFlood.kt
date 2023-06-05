@@ -131,7 +131,7 @@ class HyParFlood(address: Inet4Address, config: Config) : GenericProtocol(NAME, 
         registerRequestHandler(InitRequest.ID) { req: InitRequest, _ -> onInitRequest(req) }
         registerRequestHandler(BroadcastRequest.ID) { req: BroadcastRequest, _ -> onBroadcastRequest(req) }
 
-        logger.info("Bind address $myself")
+        logger.debug("Bind address {}", myself)
 
     }
 
@@ -143,7 +143,7 @@ class HyParFlood(address: Inet4Address, config: Config) : GenericProtocol(NAME, 
             val m = JoinMessage()
             sendMessage(m, contactHost)
             logger.debug("Sent JoinMessage to {}", contactHost)
-            logger.trace("Sent $m to $contactHost")
+            logger.trace("Sent {} to {}", m, contactHost)
 
             setupTimer(JoinTimeout(contactHost), joinTimeout.toLong())
         } else

@@ -9,7 +9,7 @@ import pt.unl.fct.di.novasys.network.ISerializer
 data class PartitionReplicationRequest(val partition: String) : ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 213
+        const val ID: Short = 212
     }
 
     object Serializer : ISerializer<PartitionReplicationRequest> {

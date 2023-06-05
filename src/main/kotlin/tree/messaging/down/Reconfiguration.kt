@@ -9,7 +9,7 @@ import tree.utils.HybridTimestamp
 class Reconfiguration(val grandparents: List<Host>, val timestamps: List<HybridTimestamp>) : ProtoMessage(ID){
 
     companion object {
-        const val ID: Short = 207
+        const val ID: Short = 205
     }
 
     override fun toString(): String {

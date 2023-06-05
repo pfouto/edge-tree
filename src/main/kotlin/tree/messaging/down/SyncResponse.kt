@@ -8,7 +8,7 @@ import storage.FetchedObject
 class SyncResponse(val reconfiguration: Reconfiguration, val items: List<FetchedObject>) : ProtoMessage(ID) {
 
     companion object {
-        const val ID: Short = 204
+        const val ID: Short = 207
     }
 
     override fun toString(): String {

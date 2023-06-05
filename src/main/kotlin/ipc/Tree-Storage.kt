@@ -10,16 +10,16 @@ import tree.utils.WriteID
 /**
  * From Tree to Storage requesting the data difference to send to synchronizing child
  */
-class DataDiffRequest(val child: Host, val msg: SyncRequest) : ProtoRequest(ID) {
+data class DataDiffRequest(val child: Host, val msg: SyncRequest) : ProtoRequest(ID) {
     companion object {
-        const val ID: Short = 214
+        const val ID: Short = 216
     }
 }
 
 /**
  * From Storage to Tree with the data difference to send to synchronizing child
  */
-class DataDiffReply(val child: Host, val data: List<FetchedObject>) : ProtoReply(ID) {
+data class DataDiffReply(val child: Host, val data: List<FetchedObject>) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 215
     }
@@ -28,7 +28,7 @@ class DataDiffReply(val child: Host, val data: List<FetchedObject>) : ProtoReply
 /**
  * From Tree to Storage requesting the current keys + metadata for parent synchronization
  */
-class FetchMetadataReq(val parent: Host) : ProtoRequest(ID) {
+data class FetchMetadataReq(val parent: Host) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 212
     }
@@ -37,7 +37,7 @@ class FetchMetadataReq(val parent: Host) : ProtoRequest(ID) {
 /**
  * From Storage to Tree with the current keys + metadata for parent synchronization
  */
-class FetchMetadataRep(
+data class FetchMetadataRep(
     val parent: Host,
     val fullPartitions: MutableMap<String, Map<String, ObjectMetadata>>,
     val partialPartitions: MutableMap<String, Map<String, ObjectMetadata>>,
@@ -50,7 +50,7 @@ class FetchMetadataRep(
 /**
  * From Tree to Storage with a set of objects to apply after sync
  */
-class SyncApply(val objects: List<FetchedObject>) : ProtoRequest(ID) {
+data class SyncApply(val objects: List<FetchedObject>) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 214
     }
@@ -59,7 +59,7 @@ class SyncApply(val objects: List<FetchedObject>) : ProtoRequest(ID) {
 /**
  * From Storage to Tree requesting object(s) to be fetched from a parent
  */
-class ObjReplicationReq(val requests: Set<ObjectIdentifier>) : ProtoRequest(ID) {
+data class ObjReplicationReq(val requests: Set<ObjectIdentifier>) : ProtoRequest(ID) {
 
     constructor(singleRequest: ObjectIdentifier) : this(setOf(singleRequest))
 
@@ -71,7 +71,7 @@ class ObjReplicationReq(val requests: Set<ObjectIdentifier>) : ProtoRequest(ID) 
 /**
  * From Tree to Storage with objects(s) that has been previously requested locally
  */
-class ObjReplicationRep(val objects: List<FetchedObject>) : ProtoReply(ID) {
+data class ObjReplicationRep(val objects: List<FetchedObject>) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 202
     }
@@ -80,7 +80,7 @@ class ObjReplicationRep(val objects: List<FetchedObject>) : ProtoReply(ID) {
 /**
  * From Storage to Tree requesting a full partition to be fetched from a parent
  */
-class PartitionReplicationReq(val partition: String) : ProtoRequest(ID) {
+data class PartitionReplicationReq(val partition: String) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 203
     }
@@ -89,7 +89,7 @@ class PartitionReplicationReq(val partition: String) : ProtoRequest(ID) {
 /**
  * From Tree to Storage with a full partition that has been previously requested locally
  */
-class PartitionReplicationRep(val partition: String, val objects: List<Pair<String, ObjectData>>) : ProtoReply(ID) {
+data class PartitionReplicationRep(val partition: String, val objects: List<Pair<String, ObjectData>>) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 204
     }
@@ -98,7 +98,7 @@ class PartitionReplicationRep(val partition: String, val objects: List<Pair<Stri
 /**
  * From Tree to Storage requesting object(s) for a child
  */
-class FetchObjectsReq(val child: Host, val objectIdentifiers: Set<ObjectIdentifier>) : ProtoRequest(ID) {
+data class FetchObjectsReq(val child: Host, val objectIdentifiers: Set<ObjectIdentifier>) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 205
     }
@@ -107,7 +107,7 @@ class FetchObjectsReq(val child: Host, val objectIdentifiers: Set<ObjectIdentifi
 /**
  * From Storage to Tree with object(s) that has been previously requested by a child
  */
-class FetchObjectsRep(val child: Host, val objects: List<FetchedObject>) :
+data class FetchObjectsRep(val child: Host, val objects: List<FetchedObject>) :
     ProtoReply(ID) {
     companion object {
         const val ID: Short = 206
@@ -117,7 +117,7 @@ class FetchObjectsRep(val child: Host, val objects: List<FetchedObject>) :
 /**
  * From Tree to Storage requesting object(s) for a child
  */
-class FetchPartitionReq(val child: Host, val partition: String) : ProtoRequest(ID) {
+data class FetchPartitionReq(val child: Host, val partition: String) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 207
     }
@@ -126,7 +126,7 @@ class FetchPartitionReq(val child: Host, val partition: String) : ProtoRequest(I
 /**
  * From Storage to Tree with object(s) that has been previously requested by a child
  */
-class FetchPartitionRep(val child: Host, val partition: String, val objects: List<Pair<String, ObjectData>>) :
+data class FetchPartitionRep(val child: Host, val partition: String, val objects: List<Pair<String, ObjectData>>) :
     ProtoReply(ID) {
     companion object {
         const val ID: Short = 208
@@ -136,7 +136,7 @@ class FetchPartitionRep(val child: Host, val partition: String, val objects: Lis
 /**
  * From Tree to Storage with a remote write to be applied locally
  */
-class PropagateWriteReply(val id: WriteID, val write: RemoteWrite) : ProtoReply(ID) {
+data class PropagateWriteReply(val id: WriteID, val write: RemoteWrite) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 209
     }
@@ -145,13 +145,13 @@ class PropagateWriteReply(val id: WriteID, val write: RemoteWrite) : ProtoReply(
 /**
  * From Storage to Tree with a local write to be propagated to the tree
  */
-class PropagateWriteRequest(val id: Long, val write: RemoteWrite) : ProtoRequest(ID) {
+data class PropagateWriteRequest(val id: Long, val write: RemoteWrite) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 210
     }
 }
 
-class PersistenceUpdate(val persistenceMap: Map<Int, Long>) : ProtoReply(ID) {
+data class PersistenceUpdate(val persistenceMap: Map<Int, Long>) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 211
     }

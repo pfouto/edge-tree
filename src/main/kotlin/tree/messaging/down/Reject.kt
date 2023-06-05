@@ -6,7 +6,7 @@ import pt.unl.fct.di.novasys.network.ISerializer
 
 class Reject : ProtoMessage(ID) {
     companion object {
-        const val ID: Short = 203
+        const val ID: Short = 206
     }
 
     override fun toString(): String {

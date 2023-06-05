@@ -35,7 +35,7 @@ class View(
             var excess: Host? = null
             if (peers.size == capacity) excess = dropRandom()
             peers.add(peer)
-            logger.info("{} Added {}", name.uppercase(), peer.address.hostAddress)
+            logger.debug("{} Added {}", name.uppercase(), peer.address.hostAddress)
             return excess
         }
         return null
@@ -44,7 +44,7 @@ class View(
     override fun removePeer(peer: Host): Boolean {
         val removed = peers.remove(peer)
         if (removed)
-            logger.info("{} Removed {}", name.uppercase(), peer.address.hostAddress)
+            logger.debug("{} Removed {}", name.uppercase(), peer.address.hostAddress)
         return removed
     }
 
@@ -53,15 +53,15 @@ class View(
     }
 
     override fun dropRandom(): Host? {
-        var torm: Host? = null
+        var toRemove: Host? = null
         if (peers.size > 0) {
             val idx = rnd.nextInt(peers.size)
             val hosts = peers.toTypedArray()
-            torm = hosts[idx]
-            peers.remove(torm)
-            logger.info("{} Removed {}", name.uppercase(), torm.address.hostAddress)
+            toRemove = hosts[idx]
+            peers.remove(toRemove)
+            logger.debug("{} Removed {}", name.uppercase(), toRemove.address.hostAddress)
         }
-        return torm
+        return toRemove
     }
 
     override fun getPeers(): Set<Host> {
