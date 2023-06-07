@@ -16,7 +16,6 @@ import tree.utils.HybridTimestamp
 import tree.utils.WriteID
 import java.net.Inet4Address
 import java.util.*
-import java.util.concurrent.locks.Lock
 import kotlin.system.exitProcess
 
 class Storage(val address: Inet4Address, private val config: Config) : GenericProtocol(NAME, ID) {
@@ -41,7 +40,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     //Self
     private val localTimeLock = Object()
-    @Volatile private var localTime: HybridTimestamp = HybridTimestamp(getTimeMillis(), 0)
+    @Volatile
+    private var localTime: HybridTimestamp = HybridTimestamp(getTimeMillis(), 0)
 
     // Pending reads and data requests for each pending object
     private val pendingObjects = mutableMapOf<ObjectIdentifier, Pair<MutableList<Long>, MutableList<Host>>>()
@@ -49,7 +49,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     // Pending data requests for each pending full partition (there are no reads on full partitions)
     private val pendingFullPartitions = mutableMapOf<String, MutableList<Host>>()
 
-    private val pendingPersistence = mutableMapOf<Int, MutableList<Long>>()
+    private val pendingPersistence = mutableMapOf<Int, MutableList<PropagateWriteRequest>>()
 
     //Sorted list of pending migrations (sorted by timestamp and level)
     // TODO private val pendingMigrations =
@@ -70,6 +70,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerRequestHandler(FetchMetadataReq.ID) { req: FetchMetadataReq, _ -> onFetchMetadata(req) }
         registerRequestHandler(SyncApply.ID) { req: SyncApply, _ -> onSyncApply(req) }
         registerRequestHandler(DataDiffRequest.ID) { req: DataDiffRequest, _ -> onDataDiffRequest(req) }
+        registerRequestHandler(ReconfigurationApply.ID) { req: ReconfigurationApply, _ -> onReconfiguration(req) }
     }
 
     override fun init(props: Properties) {
@@ -156,22 +157,26 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private fun onSyncApply(req: SyncApply) {
         logger.debug("Sync apply received")
+
+        //Apply remote data locally
         req.objects.forEach { (objId, objData) ->
             storageWrapper.put(objId, objData!!)
         }
+        //Re-request pending data
         pendingFullPartitions.forEach { (p, _) ->
             sendRequest(PartitionReplicationReq(p), TreeProto.ID)
         }
         sendRequest(ObjReplicationReq(pendingObjects.keys.toSet()), TreeProto.ID)
+
+        //Re-send writes regarding pending persistence requests
+        pendingPersistence.forEach { (_, reqList) -> reqList.forEach { req -> sendRequest(req, TreeProto.ID) } }
+
     }
 
     private fun onLocalOpRequest(req: OpRequest) {
         when (req.op) {
             is WriteOperation -> {
-                synchronized(localTimeLock) {
-                    localTime = localTime.nextTimestamp()
-                }
-                val hlc = localTime
+                val hlc = getTimestamp()
                 val objId = ObjectIdentifier(req.op.partition, req.op.key)
                 val objData = ObjectData(req.op.value, ObjectMetadata(hlc, lww))
                 //Even if not present, we can complete the operation. After fetching the data,
@@ -187,15 +192,17 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                     }
                 }
 
+                val propagateWriteRequest = PropagateWriteRequest(req.id, RemoteWrite(objId, objData))
                 //Ask tree to propagate write
-                sendRequest(PropagateWriteRequest(req.id, RemoteWrite(objId, objData)), TreeProto.ID)
+                sendRequest(propagateWriteRequest, TreeProto.ID)
 
                 //if persistence, also add to pending (different from read and migration pending)
                 if (req.op.persistence > 0) {
                     if (req.op.persistence == 1.toShort() || amDc)
                         sendReply(ClientWritePersistent(req.id), ClientProxy.ID)
                     else
-                        pendingPersistence.computeIfAbsent(req.op.persistence.toInt()) { mutableListOf() }.add(req.id)
+                        pendingPersistence.computeIfAbsent(req.op.persistence.toInt()) { mutableListOf() }
+                            .add(propagateWriteRequest)
                 }
             }
 
@@ -224,8 +231,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             }
 
             is MigrationOperation -> {
-                //TODO soonTM
+                //TODO implement
                 //Add to pending (different from read pending)
+
+                //TODO if path contains this node, reply immediately?
+
+                //TODO else send to tree
+
             }
 
             else -> assertOrExit(false, "Unknown operation type???")
@@ -330,10 +342,17 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
         //TODO print id for log purposes (without persistence id)
 
-        //TODO check GLC / HLC / whatever before executing blindly?
-        // Maybe not, because we receive in order...
-
+        //If we used a slower (replicated/to disk) storage, we could tag write operations with the client dependency
+        //to know when we can safely execute operations in parallel. Here we do them serially, so we don't need to.
         storageWrapper.put(write.objectIdentifier, write.objectData)
+    }
+
+    private fun onReconfiguration(req: ReconfigurationApply) {
+        //No need to re-send requests partitions/objects, since we do that when handling the SyncApply
+        //No need to re-send pending persistence operations, since we do that when handling the SyncApply
+
+        //TODO send new config to clientProxy to propagate to clients
+
     }
 
     /**
@@ -345,26 +364,26 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         rep.persistenceMap.forEach { (persistenceLevel, id) ->
             if (persistenceLevel == Int.MAX_VALUE) {
                 pendingPersistence.forEach { (_, opList) ->
-                    while (opList.isNotEmpty() && opList.first() <= id) {
-                        sendReply(ClientWritePersistent(opList.removeFirst()), ClientProxy.ID)
+                    while (opList.isNotEmpty() && opList.first().id <= id) {
+                        sendReply(ClientWritePersistent(opList.removeFirst().id), ClientProxy.ID)
                     }
                 }
             } else {
                 val pending = pendingPersistence[persistenceLevel]
                 if (pending != null) {
-                    while (pending.isNotEmpty() && pending.first() <= id) {
-                        sendReply(ClientWritePersistent(pending.removeFirst()), ClientProxy.ID)
+                    while (pending.isNotEmpty() && pending.first().id <= id) {
+                        sendReply(ClientWritePersistent(pending.removeFirst().id), ClientProxy.ID)
                     }
                 }
             }
         }
     }
 
-    fun getTimestamp(): HybridTimestamp{
-        synchronized(localTimeLock){
+    fun getTimestamp(): HybridTimestamp {
+        synchronized(localTimeLock) {
             localTime = localTime.nextTimestamp()
+            return localTime
         }
-        return localTime
     }
 
     private fun onDeactivate() {

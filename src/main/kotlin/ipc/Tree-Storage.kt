@@ -8,6 +8,15 @@ import tree.messaging.up.SyncRequest
 import tree.utils.WriteID
 
 /**
+ * From Tree to Storage informing about a tree reconfiguration
+ */
+data class ReconfigurationApply(val parents: List<Host>) : ProtoRequest(ID) {
+    companion object {
+        const val ID: Short = 217
+    }
+}
+
+/**
  * From Tree to Storage requesting the data difference to send to synchronizing child
  */
 data class DataDiffRequest(val child: Host, val msg: SyncRequest) : ProtoRequest(ID) {

@@ -88,9 +88,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     override fun onFetchMetadataReply(reply: FetchMetadataRep) {
         logger.debug(
             "Received FetchMetadataRep to parent {}, full: {} partial: {}",
-            reply.parent,
-            reply.fullPartitions.keys,
-            reply.partialPartitions.keys
+            reply.parent, reply.fullPartitions.keys, reply.partialPartitions.keys
         )
         if (state !is ParentConnected) return
         val oldState = state as ParentConnected
@@ -129,9 +127,8 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         assertOrExit(parent == oldState.parent, "Parent mismatch")
         state = ParentReady(parent, emptyList(), emptyList())
 
-        //SyncApply also triggers requests for pending data
+        //SyncApply also triggers requests for pending data and pending persistence
         sendRequest(SyncApply(msg.items), Storage.ID)
-
 
         onReconfiguration(parent, msg.reconfiguration)
 
@@ -143,15 +140,22 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     override fun onReconfiguration(host: Host, reconfiguration: Reconfiguration) {
         val oldState = state as ParentReady
         assertOrExit(host == oldState.parent, "Parent mismatch")
+
+        //Handle reconfiguration locally
         val metadata = reconfiguration.timestamps.map { Metadata(it) }
         state = ParentReady(host, reconfiguration.grandparents, metadata)
         assertOrExit(metadata.size == reconfiguration.grandparents.size + 1, "Wrong number of timestamps")
 
-        //TODO notification to clients directly? Or to storage that redirects to clients
+        //Send new configuration to storage
+        val parentList = mutableListOf<Host>()
+        parentList.add(host)
+        parentList.addAll(reconfiguration.grandparents)
+        sendRequest(ReconfigurationApply(parentList), Storage.ID)
 
+        //Send new configuration to children
         val reconfigurationMessage = buildReconfigurationMessage()
         for (childState in children.values)
-            if(childState is ChildReady)
+            if (childState is ChildReady)
                 sendMessage(reconfigurationMessage, childState.child, TCPChannel.CONNECTION_IN)
     }
 
@@ -197,9 +201,11 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         }
         sendReply(PersistenceUpdate(localPersistenceUpdates), Storage.ID)
 
-        val timestamps = fetchUpstreamTimestamps()
+        //Handle pending migrations
 
         //Handle child persistence
+        updateStableTs()
+        val timestamps = fetchUpstreamTimestamps()
         for (childState in children.values) {
             if (childState is ChildReady) {
                 val childPersistence = mutableMapOf<Int, Int>()
@@ -375,6 +381,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
 
     override fun onChildDisconnected(child: Host) {
         children.remove(child)!!
+        updateStableTs()
         logger.info("CHILD DISCONNECTED $child")
     }
 
@@ -469,4 +476,10 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             exitProcess(1)
         }
     }
+
+    //TODO on client migration:
+    // IF from a child or grandchild, wait until the stableTS of that child is greater, or the child is disconnected
+    // IF from a parent, wait until the stableTS of the parent is greater
+    // IF the parent died wait until any grandparent having that TS
+
 }
