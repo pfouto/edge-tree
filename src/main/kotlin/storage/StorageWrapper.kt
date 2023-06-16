@@ -11,6 +11,7 @@ interface StorageWrapper {
     fun get(objId: ObjectIdentifier): ObjectData?
     fun getMetadata(objId: ObjectIdentifier): ObjectMetadata?
     fun delete(objId: ObjectIdentifier): ObjectData?
+    fun deletePartition(partition: String)
     fun cleanUp()
     fun getPartitionDataIfNewer(partition: String, metadata: Map<String, ObjectMetadata>): List<FetchedObject>
     fun getFullPartitionData(partition: String): List<Pair<String, ObjectData>>

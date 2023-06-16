@@ -6,7 +6,7 @@ import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.network.data.Host
-import storage.DataIndex
+import storage.utils.ChildDataIndex
 import storage.RemoteWrite
 import storage.Storage
 import tree.messaging.down.*
@@ -106,7 +106,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         val childState = children[child]!!
         assertOrExit(childState is ChildConnected, "Sync message while not connected $child")
 
-        children[child] = ChildSync(child, DataIndex.fromSyncRequest(msg))
+        children[child] = ChildSync(child, ChildDataIndex.fromSyncRequest(msg))
         logger.info("CHILD SYNC $child")
 
         sendRequest(DataDiffRequest(child, msg), Storage.ID)
@@ -442,7 +442,9 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         val pendingRemoteWrites = mutableListOf<Pair<WriteID, RemoteWrite>>()
         reply.objects.forEach {
             pendingRemoteWrites.addAll(childState.pendingObjects.remove(it.objectIdentifier)!!)
+            childState.objects.addObject(it.objectIdentifier)
         }
+
         if (pendingRemoteWrites.isNotEmpty())
             sendMessage(DownstreamWrite(pendingRemoteWrites), reply.child, TCPChannel.CONNECTION_IN)
     }
@@ -455,6 +457,8 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         }
 
         sendMessage(PartitionReplicationReply(reply.partition, reply.objects), reply.child, TCPChannel.CONNECTION_IN)
+
+        childState.objects.addFullPartition(reply.partition)
 
         val pendingRemoteWrites = childState.pendingFullPartitions.remove(reply.partition)!!
         if (pendingRemoteWrites.isNotEmpty()) {
@@ -476,6 +480,17 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             exitProcess(1)
         }
     }
+
+    //TODO replica removal:
+    //  receive request from storage and send message to parent
+    //  handle child message
+    override fun onRemoveReplicas(req: RemoveReplicasRequest) {
+        TODO("Not yet implemented")
+    }
+
+    //TODO send ChildDataIndex to storage on each new child
+    //TODO send ChildDataIndex removal on each child removal
+
 
     //TODO on client migration:
     // IF from a child or grandchild, wait until the stableTS of that child is greater, or the child is disconnected

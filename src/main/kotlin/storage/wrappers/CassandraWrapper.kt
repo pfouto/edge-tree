@@ -1,4 +1,4 @@
-package storage
+package storage.wrappers
 
 import org.apache.cassandra.config.Config
 import org.apache.cassandra.config.DatabaseDescriptor
@@ -8,10 +8,11 @@ import org.apache.cassandra.db.ConsistencyLevel
 import org.apache.cassandra.io.util.File
 import org.apache.cassandra.service.EmbeddedCassandraService
 import org.apache.logging.log4j.LogManager
+import storage.*
 import java.net.URL
 import java.util.*
 
-class CassandraWrapper() : StorageWrapper{
+class CassandraWrapper() : StorageWrapper {
 
     companion object {
         private val logger = LogManager.getLogger()
@@ -60,6 +61,10 @@ class CassandraWrapper() : StorageWrapper{
     }
 
     override fun delete(objId: ObjectIdentifier): ObjectData? {
+        TODO("Not yet implemented")
+    }
+
+    override fun deletePartition(partition: String) {
         TODO("Not yet implemented")
     }
 

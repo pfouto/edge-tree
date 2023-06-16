@@ -11,6 +11,11 @@ import proxy.utils.ReadOperation
 import proxy.utils.WriteOperation
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.network.data.Host
+import storage.utils.ChildDataIndex
+import storage.utils.DataIndex
+import storage.utils.GarbageCollectTimer
+import storage.wrappers.CassandraWrapper
+import storage.wrappers.InMemoryWrapper
 import tree.TreeProto
 import tree.utils.HybridTimestamp
 import tree.utils.WriteID
@@ -35,6 +40,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     private lateinit var storageWrapper: StorageWrapper
 
     private lateinit var dataIndex: DataIndex
+
+    private val childData: MutableMap<Host, ChildDataIndex> = mutableMapOf()
 
     private var amDc: Boolean = false
 
@@ -71,6 +78,10 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerRequestHandler(SyncApply.ID) { req: SyncApply, _ -> onSyncApply(req) }
         registerRequestHandler(DataDiffRequest.ID) { req: DataDiffRequest, _ -> onDataDiffRequest(req) }
         registerRequestHandler(ReconfigurationApply.ID) { req: ReconfigurationApply, _ -> onReconfiguration(req) }
+        registerRequestHandler(AddedChildRequest.ID) { req: AddedChildRequest, _ -> onAddedChild(req) }
+        registerRequestHandler(RemovedChildRequest.ID) { req: RemovedChildRequest, _ -> onRemovedChild(req) }
+
+        registerTimerHandler(GarbageCollectTimer.ID) { timer: GarbageCollectTimer, _ -> onGarbageCollect(timer) }
     }
 
     override fun init(props: Properties) {
@@ -82,9 +93,12 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         amDc = notification.contact == null
 
         dataIndex = when {
-            notification.contact != null -> DataIndex()
+            !amDc -> DataIndex()
             else -> DataIndex.DCDataIndex()
         }
+
+        if(!amDc)
+            setupPeriodicTimer(GarbageCollectTimer(), config.gc_period, config.gc_period)
 
         storageWrapper = if (amDc) //datacenter
             when (config.dc_storage_type) {
@@ -190,6 +204,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                         sendRequest(ObjReplicationReq(objId), TreeProto.ID)
                         Pair(mutableListOf(), mutableListOf())
                     }
+                } else {
+                    dataIndex.updateTimestamp(objId)
                 }
 
                 val propagateWriteRequest = PropagateWriteRequest(req.id, RemoteWrite(objId, objData))
@@ -211,6 +227,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 val objId = ObjectIdentifier(req.op.partition, req.op.key)
 
                 if (dataIndex.containsObject(objId)) {
+                    dataIndex.updateTimestamp(objId)
                     when (val data = storageWrapper.get(objId)) {
                         null -> sendReply(OpReply(req.id, null, null), ClientProxy.ID)
                         else -> sendReply(OpReply(req.id, data.metadata.hlc, data.value), ClientProxy.ID)
@@ -344,6 +361,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
         //If we used a slower (replicated/to disk) storage, we could tag write operations with the client dependency
         //to know when we can safely execute operations in parallel. Here we do them serially, so we don't need to.
+        //We do not update the dataindex timestamp here, only on local writes/reads!
         storageWrapper.put(write.objectIdentifier, write.objectData)
     }
 
@@ -353,6 +371,23 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
         //TODO send new config to clientProxy to propagate to clients
 
+    }
+
+    private fun onRemovedChild(req: RemovedChildRequest) {
+        childData.remove(req.child)
+    }
+
+    private fun onAddedChild(req: AddedChildRequest) {
+        childData[req.child] = req.data
+    }
+
+    private fun onGarbageCollect(timer: GarbageCollectTimer) {
+        //TODO need to ignore child objects somehow...
+        val (removedObjects, removedPartitions) =
+            dataIndex.garbageCollect(System.currentTimeMillis(), config.gc_treshold, childData)
+        removedObjects.forEach { storageWrapper.delete(it) }
+        removedPartitions.forEach { storageWrapper.deletePartition(it) }
+        //TODO send removed objects/partitions to tree
     }
 
     /**

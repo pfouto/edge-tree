@@ -1,6 +1,7 @@
-package storage
+package storage.wrappers
 
 import org.apache.logging.log4j.LogManager
+import storage.*
 
 class InMemoryWrapper : StorageWrapper {
 
@@ -30,6 +31,10 @@ class InMemoryWrapper : StorageWrapper {
 
     override fun delete(objId: ObjectIdentifier): ObjectData? {
         return data[objId.partition]?.remove(objId.key)
+    }
+
+    override fun deletePartition(partition: String) {
+        data.remove(partition)
     }
 
     override fun getFullPartitionData(partition: String): List<Pair<String, ObjectData>> {

@@ -156,7 +156,10 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
         registerReplyHandler(FetchMetadataRep.ID) { req: FetchMetadataRep, _ -> onFetchMetadataReply(req) }
         registerReplyHandler(DataDiffReply.ID) { req: DataDiffReply, _ -> onDataDiffReply(req) }
 
+        registerRequestHandler(RemoveReplicasRequest.ID) { req: RemoveReplicasRequest, _ -> onRemoveReplicas(req) }
+
     }
+
 
     override fun init(props: Properties) {
         logger.debug("Bind address {}", address)
@@ -203,6 +206,7 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
     abstract fun onFetchPartitionReply(reply: FetchPartitionRep)
     abstract fun onFetchMetadataReply(reply: FetchMetadataRep)
     abstract fun onDataDiffReply(reply: DataDiffReply)
+    abstract fun onRemoveReplicas(req: RemoveReplicasRequest)
 
     abstract fun onPropagateLocalWrite(req: PropagateWriteRequest)
 }
