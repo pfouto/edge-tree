@@ -47,6 +47,18 @@ open class ChildDataIndex {
         partitions.clear()
     }
 
+    fun containsPartition(partitionName: String): Boolean {
+        return partitions[partitionName] != null && (
+                partitions[partitionName] is FullPartition ||
+                        (partitions[partitionName] as PartialPartition).keys.isNotEmpty()
+                )
+    }
+
+    fun removeAll(deletedObjects: Set<ObjectIdentifier>, deletedPartitions: Set<String>) {
+        deletedPartitions.forEach { partitions.remove(it) }
+        deletedObjects.forEach { (partitions[it.partition]!! as PartialPartition).keys.remove(it.key) }
+    }
+
     abstract class Partition(val name: String)
 
     class FullPartition(name: String) : Partition(name)

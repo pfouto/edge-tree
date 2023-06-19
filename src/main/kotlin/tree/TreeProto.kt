@@ -69,6 +69,7 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
         registerMessageSerializer(channel, PartitionReplicationReply.ID, PartitionReplicationReply.Serializer)
         registerMessageSerializer(channel, UpstreamWrite.ID, UpstreamWrite.Serializer)
         registerMessageSerializer(channel, DownstreamWrite.ID, DownstreamWrite.Serializer)
+        registerMessageSerializer(channel, ReplicaRemovalRequest.ID, ReplicaRemovalRequest.Serializer)
 
         registerMessageHandler(
             channel,
@@ -136,6 +137,11 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
             { msg: DownstreamWrite, from, _, _ -> onDownstreamWrite(from, msg) },
             { msg: DownstreamWrite, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
         )
+        registerMessageHandler(
+            channel, ReplicaRemovalRequest.ID,
+            { msg: ReplicaRemovalRequest, from, _, _ -> onReplicaRemoval(from, msg) },
+            { msg: ReplicaRemovalRequest, to: Host, _, cause: Throwable, _ -> onMessageFailed(msg, to, cause) }
+        )
 
 
         subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
@@ -195,6 +201,7 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
     abstract fun onChildPartitionReplicationRequest(from: Host, msg: PartitionReplicationRequest, )
     abstract fun onChildSyncRequest(child: Host, msg: SyncRequest)
     abstract fun onUpstreamWrite(child: Host, msg: UpstreamWrite)
+    abstract fun onReplicaRemoval(child: Host, msg: ReplicaRemovalRequest)
 
     //Timers
     abstract fun propagateTime()

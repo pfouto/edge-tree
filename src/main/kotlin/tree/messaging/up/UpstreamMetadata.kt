@@ -7,7 +7,7 @@ import tree.utils.HybridTimestamp
 
 data class UpstreamMetadata(val ts: HybridTimestamp): ProtoMessage(ID) {
     companion object {
-        const val ID: Short = 214
+        const val ID: Short = 215
     }
 
     object Serializer : ISerializer<UpstreamMetadata> {

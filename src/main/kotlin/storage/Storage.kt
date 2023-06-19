@@ -382,12 +382,11 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     }
 
     private fun onGarbageCollect(timer: GarbageCollectTimer) {
-        //TODO need to ignore child objects somehow...
         val (removedObjects, removedPartitions) =
             dataIndex.garbageCollect(System.currentTimeMillis(), config.gc_treshold, childData)
         removedObjects.forEach { storageWrapper.delete(it) }
         removedPartitions.forEach { storageWrapper.deletePartition(it) }
-        //TODO send removed objects/partitions to tree
+        sendRequest(RemoveReplicasRequest(removedObjects, removedPartitions), TreeProto.ID)
     }
 
     /**

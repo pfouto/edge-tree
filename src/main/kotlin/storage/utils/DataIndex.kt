@@ -53,24 +53,25 @@ open class DataIndex {
     open fun garbageCollect(
         now: Long,
         threshold: Long,
-        childData: MutableMap<Host, ChildDataIndex>
-    ): Pair<List<ObjectIdentifier>, List<String>> {
-        //TODO take into account child data
-
-        val deletedObjects = mutableListOf<ObjectIdentifier>()
-        val deletedPartitions = mutableListOf<String>()
+        childData: MutableMap<Host, ChildDataIndex>,
+    ): Pair<Set<ObjectIdentifier>, Set<String>> {
+        val deletedObjects = mutableSetOf<ObjectIdentifier>()
+        val deletedPartitions = mutableSetOf<String>()
 
         val partitionIterator = partitions.iterator()
         while (partitionIterator.hasNext()) {
             val (partitionName, partition) = partitionIterator.next()
-            if (partition is FullPartition && now - partition.lastAccess > threshold) {
+            if (partition is FullPartition && now - partition.lastAccess > threshold
+                && childData.values.none { it.containsPartition(partitionName) }
+            ) {
                 deletedPartitions.add(partitionName)
                 partitionIterator.remove()
             } else if (partition is PartialPartition) {
                 val keyIterator = partition.keys.iterator()
                 while (keyIterator.hasNext()) {
                     val (key, lastAccess) = keyIterator.next()
-                    if (now - lastAccess > threshold) {
+                    val objId = ObjectIdentifier(partitionName, key)
+                    if (now - lastAccess > threshold && childData.values.none { it.containsObject(objId) }) {
                         deletedObjects.add(ObjectIdentifier(partitionName, key))
                         keyIterator.remove()
                     }
@@ -122,7 +123,7 @@ open class DataIndex {
             now: Long,
             threshold: Long,
             childData: MutableMap<Host, ChildDataIndex>,
-        ): Pair<List<ObjectIdentifier>, List<String>> {
+        ): Pair<Set<ObjectIdentifier>, Set<String>> {
             throw UnsupportedOperationException("Cannot gc in DCDataIndex")
         }
 

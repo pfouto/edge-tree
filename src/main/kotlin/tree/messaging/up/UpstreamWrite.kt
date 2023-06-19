@@ -11,7 +11,7 @@ data class UpstreamWrite(val writes: List<Pair<WriteID, RemoteWrite>>) : ProtoMe
     constructor(writeID: WriteID, singleWrite: RemoteWrite) : this(listOf(Pair(writeID, singleWrite)))
 
     companion object {
-        const val ID: Short = 215
+        const val ID: Short = 216
     }
 
     object Serializer : ISerializer<UpstreamWrite> {

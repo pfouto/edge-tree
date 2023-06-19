@@ -117,6 +117,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         val childState = children[reply.child]!! as ChildSync
         children[reply.child] = ChildReady(reply.child, childState.objects, childState.childStableTime)
         logger.info("CHILD READY ${reply.child}")
+        sendRequest(AddedChildRequest(reply.child, childState.objects), Storage.ID)
         updateStableTs()
         sendMessage(SyncResponse(buildReconfigurationMessage(), reply.data), reply.child, TCPChannel.CONNECTION_IN)
         sendMessage(DownstreamWrite(childState.pendingWrites), reply.child, TCPChannel.CONNECTION_IN)
@@ -381,6 +382,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
 
     override fun onChildDisconnected(child: Host) {
         children.remove(child)!!
+        sendRequest(RemovedChildRequest(child), Storage.ID)
         updateStableTs()
         logger.info("CHILD DISCONNECTED $child")
     }
@@ -481,16 +483,21 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         }
     }
 
-    //TODO replica removal:
-    //  receive request from storage and send message to parent
-    //  handle child message
     override fun onRemoveReplicas(req: RemoveReplicasRequest) {
-        TODO("Not yet implemented")
+        if (state is ParentReady)
+            sendMessage(
+                ReplicaRemovalRequest(req.deletedObjects, req.deletedPartitions),
+                (state as ParentReady).parent,
+                TCPChannel.CONNECTION_OUT
+            )
+        else
+            logger.warn("Ignoring replica removal request while not ready")
     }
 
-    //TODO send ChildDataIndex to storage on each new child
-    //TODO send ChildDataIndex removal on each child removal
-
+    override fun onReplicaRemoval(child: Host, msg: ReplicaRemovalRequest) {
+        val childState = children[child] as ChildReady
+        childState.objects.removeAll(msg.deletedObjects, msg.deletedPartitions)
+    }
 
     //TODO on client migration:
     // IF from a child or grandchild, wait until the stableTS of that child is greater, or the child is disconnected

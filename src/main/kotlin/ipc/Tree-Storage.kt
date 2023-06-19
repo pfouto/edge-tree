@@ -9,7 +9,7 @@ import tree.messaging.up.SyncRequest
 import tree.utils.WriteID
 
 // From Storage to Tree with the replicas that were removed locally
-data class RemoveReplicasRequest(val deletedObjects: List<ObjectIdentifier>, val deletedPartitions: List<String>) :
+data class RemoveReplicasRequest(val deletedObjects: Set<ObjectIdentifier>, val deletedPartitions: Set<String>) :
     ProtoRequest(ID) {
     companion object {
         const val ID: Short = 218
