@@ -31,11 +31,13 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
 
     private val channel: Int
 
+    val self: Host
 
     init {
         reconnectTimeout = config.tree_reconnect_timeout
         propagateTimeout = config.tree_propagate_timeout
 
+        self = Host(address, PORT)
         val channelProps = Properties()
         channelProps.setProperty(TCPChannel.ADDRESS_KEY, address.hostAddress)
         channelProps.setProperty(TCPChannel.PORT_KEY, PORT.toString())
@@ -163,6 +165,7 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
         registerReplyHandler(DataDiffReply.ID) { req: DataDiffReply, _ -> onDataDiffReply(req) }
 
         registerRequestHandler(RemoveReplicasRequest.ID) { req: RemoveReplicasRequest, _ -> onRemoveReplicas(req) }
+        registerRequestHandler(MigrationRequest.ID) { req: MigrationRequest, _ -> onMigrationRequest(req) }
 
     }
 
@@ -214,6 +217,7 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
     abstract fun onFetchMetadataReply(reply: FetchMetadataRep)
     abstract fun onDataDiffReply(reply: DataDiffReply)
     abstract fun onRemoveReplicas(req: RemoveReplicasRequest)
+    abstract fun onMigrationRequest(req: MigrationRequest)
 
     abstract fun onPropagateLocalWrite(req: PropagateWriteRequest)
 }

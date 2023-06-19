@@ -3,6 +3,7 @@ package tree
 import Config
 import ipc.*
 import org.apache.logging.log4j.LogManager
+import proxy.utils.MigrationOperation
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.network.data.Host
@@ -44,6 +45,8 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     //Persistence
     private val localPersistenceMapper = TreeMap<Int, Long>()
 
+    //Migrations
+    private val parentMigrations = mutableListOf<MigrationRequest>() //Unlocks on downstream
 
     override fun onActivate(notification: ActivateNotification) {
         logger.info("$notification received")
@@ -51,6 +54,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             logger.warn("Already active, ignoring")
             return
         }
+
 
         if (notification.contact == null) {
             state = Datacenter()
@@ -202,7 +206,15 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         }
         sendReply(PersistenceUpdate(localPersistenceUpdates), Storage.ID)
 
-        //Handle pending migrations
+        //Handle migrations
+        val iterator = parentMigrations.iterator()
+        while (iterator.hasNext()) {
+            val migration = iterator.next()
+            if(getClosestParentTimestamp(migration.migration.path, ready).isAfterOrEqual(migration.migration.hlc)) {
+                iterator.remove()
+                sendReply(MigrationReply(migration.id), Storage.ID)
+            }
+        }
 
         //Handle child persistence
         updateStableTs()
@@ -376,13 +388,30 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     /* ------------------------------- CHILD HANDLERS ------------------------------------------- */
 
     override fun onChildUpstreamMetadata(child: Host, msg: UpstreamMetadata) {
-        (children[child]!! as ChildMeta).childStableTime = msg.ts
+        val childState = children[child]!! as ChildReady
+        childState.childStableTime = msg.ts
+
+        //Check pending migrations from this child
+        val iterator = childState.pendingMigrations.iterator()
+        while (iterator.hasNext()) {
+            val mig = iterator.next()
+            if (msg.ts.isAfterOrEqual(mig.migration.hlc)) {
+                iterator.remove()
+                sendReply(MigrationReply(mig.id), Storage.ID)
+            }
+        }
+
         logger.info("CHILD-METADATA $child ${msg.ts}")
     }
 
     override fun onChildDisconnected(child: Host) {
-        children.remove(child)!!
-        sendRequest(RemovedChildRequest(child), Storage.ID)
+        val remove = children.remove(child)!!
+        if (remove is ChildReady) {
+            sendRequest(RemovedChildRequest(child), Storage.ID)
+            remove.pendingMigrations.forEach { mig ->
+                sendReply(MigrationReply(mig.id), Storage.ID)
+            }
+        }
         updateStableTs()
         logger.info("CHILD DISCONNECTED $child")
     }
@@ -499,9 +528,44 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         childState.objects.removeAll(msg.deletedObjects, msg.deletedPartitions)
     }
 
-    //TODO on client migration:
-    // IF from a child or grandchild, wait until the stableTS of that child is greater, or the child is disconnected
-    // IF from a parent, wait until the stableTS of the parent is greater
-    // IF the parent died wait until any grandparent having that TS
+    override fun onMigrationRequest(req: MigrationRequest) {
+        if (req.migration.path.contains(self)) {
+            //Came from a child node
+            for ((child, childState) in children) {
+                if (childState is ChildReady && req.migration.path.contains(child)) {
+                    //Found the child that we must track
+                    if (childState.childStableTime.isAfterOrEqual(req.migration.hlc))
+                        sendReply(MigrationReply(req.id), Storage.ID)
+                    else
+                        childState.pendingMigrations.add(req)
+                    return
+                }
+                // Child not found, probably dead, so we just respond with ok!
+                sendReply(MigrationReply(req.id), Storage.ID)
+            }
+        } else {
+            //Came from a different branch
+            val myState = state as Node
+            if (myState is ParentReady &&
+                getClosestParentTimestamp(req.migration.path, myState)
+                    .isAfterOrEqual(req.migration.hlc))
+                sendReply(MigrationReply(req.id), Storage.ID)
+            else
+                parentMigrations.add(req)
+
+        }
+    }
+
+    private fun getClosestParentTimestamp(clientPath: List<Host>, myState: ParentReady): HybridTimestamp {
+        //Must always return something (since at the very least the root is shared)
+        if(clientPath.contains(myState.parent))
+            return myState.metadata[0].timestamp
+        for(i in 1 until myState.grandparents.size) {
+            if(clientPath.contains(myState.grandparents[i]))
+                return myState.metadata[i+1].timestamp
+        }
+        throw IllegalStateException("Could not find a common parent")
+    }
+
 
 }

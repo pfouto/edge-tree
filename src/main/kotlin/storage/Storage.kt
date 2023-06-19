@@ -58,9 +58,6 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private val pendingPersistence = mutableMapOf<Int, MutableList<PropagateWriteRequest>>()
 
-    //Sorted list of pending migrations (sorted by timestamp and level)
-    // TODO private val pendingMigrations =
-
     init {
         subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
         subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
@@ -80,6 +77,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerRequestHandler(ReconfigurationApply.ID) { req: ReconfigurationApply, _ -> onReconfiguration(req) }
         registerRequestHandler(AddedChildRequest.ID) { req: AddedChildRequest, _ -> onAddedChild(req) }
         registerRequestHandler(RemovedChildRequest.ID) { req: RemovedChildRequest, _ -> onRemovedChild(req) }
+        registerReplyHandler(MigrationReply.ID) { rep: MigrationReply, _ -> onMigrationReply(rep) }
 
         registerTimerHandler(GarbageCollectTimer.ID) { timer: GarbageCollectTimer, _ -> onGarbageCollect(timer) }
     }
@@ -248,17 +246,15 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             }
 
             is MigrationOperation -> {
-                //TODO implement
-                //Add to pending (different from read pending)
-
-                //TODO if path contains this node, reply immediately?
-
-                //TODO else send to tree
-
+                sendRequest(MigrationRequest(req.id, req.op), TreeProto.ID)
             }
 
             else -> assertOrExit(false, "Unknown operation type???")
         }
+    }
+
+    private fun onMigrationReply(rep: MigrationReply){
+        sendReply(OpReply(rep.id, null, null), ClientProxy.ID)
     }
 
     /**
@@ -369,7 +365,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         //No need to re-send requests partitions/objects, since we do that when handling the SyncApply
         //No need to re-send pending persistence operations, since we do that when handling the SyncApply
 
-        //TODO send new config to clientProxy to propagate to clients
+        sendReply(TreeReconfigurationClients(req.parents), ClientProxy.ID)
 
     }
 

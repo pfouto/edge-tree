@@ -1,5 +1,7 @@
 package tree.utils
 
+import ipc.MigrationRequest
+import proxy.utils.MigrationOperation
 import pt.unl.fct.di.novasys.network.data.Host
 import storage.utils.ChildDataIndex
 import storage.ObjectIdentifier
@@ -30,5 +32,6 @@ class ChildReady(
     val pendingObjects: MutableMap<ObjectIdentifier, MutableList<Pair<WriteID, RemoteWrite>>> = mutableMapOf(),
     val pendingFullPartitions: MutableMap<String, MutableList<Pair<WriteID, RemoteWrite>>> = mutableMapOf(),
     val persistenceMapper: TreeMap<Int, Int> = TreeMap(),
-    var highestPersistenceIdSeen: Int = 0
+    var highestPersistenceIdSeen: Int = 0,
+    val pendingMigrations: MutableList<MigrationRequest> = mutableListOf()
 ) : ChildMeta(child, objects, childStableTime)

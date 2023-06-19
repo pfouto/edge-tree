@@ -28,6 +28,10 @@ class HybridTimestamp(val logical: Long = 0, val counter: Int = 0) {
         return logical > other.logical || (logical == other.logical && counter > other.counter)
     }
 
+    fun isAfterOrEqual(other: HybridTimestamp): Boolean {
+        return logical > other.logical || (logical == other.logical && counter >= other.counter)
+    }
+
 
     fun max(other: HybridTimestamp): HybridTimestamp {
         return if (isAfter(other)) this else other

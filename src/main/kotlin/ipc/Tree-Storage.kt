@@ -1,5 +1,6 @@
 package ipc
 
+import proxy.utils.MigrationOperation
 import pt.unl.fct.di.novasys.babel.generic.ProtoReply
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 import pt.unl.fct.di.novasys.network.data.Host
@@ -7,6 +8,20 @@ import storage.*
 import storage.utils.ChildDataIndex
 import tree.messaging.up.SyncRequest
 import tree.utils.WriteID
+
+// From Storage to Tree with a migration request
+data class MigrationRequest(val id: Long, val migration: MigrationOperation) : ProtoRequest(ID){
+    companion object {
+        const val ID: Short = 221
+    }
+}
+
+// From Tree to Storage with a migration reply
+data class MigrationReply(val id: Long) : ProtoReply(ID){
+    companion object {
+        const val ID: Short = 222
+    }
+}
 
 // From Storage to Tree with the replicas that were removed locally
 data class RemoveReplicasRequest(val deletedObjects: Set<ObjectIdentifier>, val deletedPartitions: Set<String>) :
