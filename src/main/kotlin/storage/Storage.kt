@@ -243,6 +243,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                     sendRequest(PartitionReplicationReq(req.op.partition), TreeProto.ID)
                     mutableListOf()
                 }
+                sendReply(OpReply(req.id, null, null), ClientProxy.ID)
             }
 
             is MigrationOperation -> {
@@ -295,6 +296,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
     }
 
+    /**
+     * A parent node sent us a requested data object
+     */
     private fun onObjReplicationReply(rep: ObjReplicationRep) {
         rep.objects.forEach {
             val newValue: ObjectData? = if (it.objectData != null)
@@ -325,9 +329,6 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
     }
 
-    /**
-     * A parent node sent us a requested data object
-     */
     private fun onPartitionReplicationReply(rep: PartitionReplicationRep) {
 
         val result = dataIndex.addFullPartition(rep.partition)

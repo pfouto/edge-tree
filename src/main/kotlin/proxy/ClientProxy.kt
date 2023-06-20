@@ -37,6 +37,8 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
 
     private val self: Host
 
+    private var currentReconfiguration : List<Host> = listOf()
+
     init {
         self = Host(address, PORT)
         val channelProps = Properties()
@@ -101,6 +103,7 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
     }
 
     private fun onTreeReconfiguration(rep: TreeReconfigurationClients) {
+        currentReconfiguration = rep.hosts
         clients.forEach {
             sendMessage(ReconfigurationMessage(rep.hosts), it)
         }
@@ -109,6 +112,7 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
     private fun onClientUp(event: ClientUpEvent, channel: Int) {
         logger.info("Client connected " + event.client)
         clients.add(event.client)
+        sendMessage(ReconfigurationMessage(currentReconfiguration), event.client)
     }
 
     private fun onClientDown(event: ClientDownEvent, channel: Int) {
