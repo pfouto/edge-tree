@@ -190,14 +190,14 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
                 if(state == State.ACTIVE)
                     return
 
-                if (System.currentTimeMillis() - startTime < config.tree_builder_location_delay) {
-                    logger.info("Waiting for delay of ${config.tree_builder_location_delay}ms, membership size ${membership.size}")
+                if(membership.size != config.tree_builder_nnodes - 1) {
+                    logger.info("Waiting for all nodes to be in membership: ${membership.size}/${config.tree_builder_nnodes - 1}")
                     return
                 }
                 val best =
                     membership.filterValues { it.first.location.distanceToCenter() < myLocation.distanceToCenter() }
                         .toList().minByOrNull { (_, value) ->
-                            0.5 * value.first.location.distanceToCenter() + value.first.location.distanceTo(myLocation)
+                            0.75 * value.first.location.distanceToCenter() + value.first.location.distanceTo(myLocation)
                         }
                 if(best != null){
                     if (best.second.first.state == State.ACTIVE) {

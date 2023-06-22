@@ -387,19 +387,20 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     /* ------------------------------- CHILD HANDLERS ------------------------------------------- */
 
     override fun onChildUpstreamMetadata(child: Host, msg: UpstreamMetadata) {
-        val childState = children[child]!! as ChildReady
+        val childState = children[child]!! as ChildMeta
         childState.childStableTime = msg.ts
 
         //Check pending migrations from this child
-        val iterator = childState.pendingMigrations.iterator()
-        while (iterator.hasNext()) {
-            val mig = iterator.next()
-            if (msg.ts.isAfterOrEqual(mig.migration.hlc)) {
-                iterator.remove()
-                sendReply(MigrationReply(mig.id), Storage.ID)
+        if(childState is ChildReady) {
+            val iterator = childState.pendingMigrations.iterator()
+            while (iterator.hasNext()) {
+                val mig = iterator.next()
+                if (msg.ts.isAfterOrEqual(mig.migration.hlc)) {
+                    iterator.remove()
+                    sendReply(MigrationReply(mig.id), Storage.ID)
+                }
             }
         }
-
         logger.info("CHILD-METADATA $child ${msg.ts}")
     }
 

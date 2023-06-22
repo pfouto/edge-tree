@@ -38,6 +38,7 @@ class Config(properties: Properties) {
         const val TREE_BUILD_STATIC_LOCATION_DEFAULT = ""
         const val TREE_BUILDER_LOCATION_DELAY_KEY = "tree_builder_location_delay"
         const val TREE_BUILDER_LOCATION_DELAY_DEFAULT = "20000"
+        const val TREE_BUILDER_NNODES_KEY = "tree_builder_nnodes"
 
         //Tree
         const val TREE_RECONNECT_TIMEOUT_KEY = "reconnect_timeout"
@@ -89,6 +90,7 @@ class Config(properties: Properties) {
     val tree_builder_interval: Long
     val tree_build_static_location: String
     val tree_builder_location_delay: Long
+    val tree_builder_nnodes: Int
 
 
     val tree_reconnect_timeout: Long
@@ -135,6 +137,7 @@ class Config(properties: Properties) {
             properties.getProperty(TREE_BUILDER_INTERVAL_KEY, TREE_BUILDER_INTERVAL_DEFAULT).toLong()
         tree_build_static_location =
             properties.getProperty(TREE_BUILD_STATIC_LOCATION, TREE_BUILD_STATIC_LOCATION_DEFAULT)
+        tree_builder_nnodes = properties.getProperty(TREE_BUILDER_NNODES_KEY).toInt()
 
         tree_reconnect_timeout =
             properties.getProperty(TREE_RECONNECT_TIMEOUT_KEY, TREE_RECONNECT_TIMEOUT_DEFAULT).toLong()
