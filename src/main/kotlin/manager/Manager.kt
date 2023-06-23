@@ -203,6 +203,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
                     if (best.second.first.state == State.ACTIVE) {
                         logger.info("Waking myself. Connecting to ${best.first}, membership size ${membership.size}")
                         triggerNotification(ActivateNotification(best.first))
+                        cancelTimer(treeBuilderTimer)
                     } else {
                         logger.info("Waiting for ${best.first} to wake up, membership size ${membership.size}")
                     }

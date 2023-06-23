@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     kotlin("jvm") version "1.8.10"
     kotlin("plugin.serialization") version "1.8.10"
@@ -30,6 +32,7 @@ dependencies {
     implementation("org.apache.logging.log4j:log4j-slf4j-impl:2.20.0")
     implementation("io.netty:netty-tcnative-boringssl-static:2.0.36.Final")
     //implementation("org.slf4j:slf4j-log4j12:2.0.6")
+    implementation(kotlin("stdlib-jdk8"))
 }
 
 tasks.test {
@@ -52,4 +55,12 @@ tasks {
         archiveVersion.set("")
 
     }
+}
+val compileKotlin: KotlinCompile by tasks
+compileKotlin.kotlinOptions {
+    jvmTarget = "1.8"
+}
+val compileTestKotlin: KotlinCompile by tasks
+compileTestKotlin.kotlinOptions {
+    jvmTarget = "1.8"
 }
