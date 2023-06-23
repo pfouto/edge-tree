@@ -47,16 +47,23 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     //Self
     private val localTimeLock = Object()
+
     @Volatile
     private var localTime: HybridTimestamp = HybridTimestamp(getTimeMillis(), 0)
 
-    // Pending reads and data requests for each pending object
-    private val pendingObjects = mutableMapOf<ObjectIdentifier, Pair<MutableList<Long>, MutableList<Host>>>()
+    data class PendingObject(val reads: MutableList<Long> = mutableListOf(),
+                             val writes: MutableList<Pair<PropagateWriteRequest, Short>> = mutableListOf(),
+                             val hosts: MutableList<Host> = mutableListOf()
+    )
+    // Pending reads/writes and data requests for each pending object
+    private val pendingObjects = mutableMapOf<ObjectIdentifier, PendingObject>()
 
     // Pending data requests for each pending full partition (there are no reads on full partitions)
     private val pendingFullPartitions = mutableMapOf<String, MutableList<Host>>()
 
     private val pendingPersistence = mutableMapOf<Int, MutableList<PropagateWriteRequest>>()
+
+    private var nOps = 0;
 
     init {
         subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
@@ -80,6 +87,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerReplyHandler(MigrationReply.ID) { rep: MigrationReply, _ -> onMigrationReply(rep) }
 
         registerTimerHandler(GarbageCollectTimer.ID) { timer: GarbageCollectTimer, _ -> onGarbageCollect(timer) }
+        Runtime.getRuntime().addShutdownHook(Thread { logger.info("$nOps $dataIndex") })
+
     }
 
     override fun init(props: Properties) {
@@ -95,7 +104,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             else -> DataIndex.DCDataIndex()
         }
 
-        if(!amDc)
+        if (!amDc)
             setupPeriodicTimer(GarbageCollectTimer(), config.gc_period, config.gc_period)
 
         storageWrapper = if (amDc) //datacenter
@@ -194,29 +203,32 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 //Even if not present, we can complete the operation. After fetching the data,
                 // LWW will converge to the correct value
                 storageWrapper.put(objId, objData)
+                nOps++
+
+                //TODO print id for log purposes (without persistence id)
+
                 sendReply(OpReply(req.id, hlc, null), ClientProxy.ID)
 
+                val propagateWriteRequest = PropagateWriteRequest(req.id, RemoteWrite(objId, objData))
+
                 //Check if available locally, if not, send replication request to tree
-                if (!dataIndex.containsObject(objId)) {
-                    pendingObjects.computeIfAbsent(objId) {
-                        sendRequest(ObjReplicationReq(objId), TreeProto.ID)
-                        Pair(mutableListOf(), mutableListOf())
+                if (dataIndex.containsObject(objId)) {
+                    dataIndex.updateTimestamp(objId)
+                    //Ask tree to propagate write
+                    sendRequest(propagateWriteRequest, TreeProto.ID)
+                    //if persistence, also add to pending (different from read and migration pending)
+                    if (req.op.persistence > 0) {
+                        if (req.op.persistence == 1.toShort() || amDc)
+                            sendReply(ClientWritePersistent(req.id), ClientProxy.ID)
+                        else
+                            pendingPersistence.computeIfAbsent(req.op.persistence.toInt()) { mutableListOf() }
+                                .add(propagateWriteRequest)
                     }
                 } else {
-                    dataIndex.updateTimestamp(objId)
-                }
-
-                val propagateWriteRequest = PropagateWriteRequest(req.id, RemoteWrite(objId, objData))
-                //Ask tree to propagate write
-                sendRequest(propagateWriteRequest, TreeProto.ID)
-
-                //if persistence, also add to pending (different from read and migration pending)
-                if (req.op.persistence > 0) {
-                    if (req.op.persistence == 1.toShort() || amDc)
-                        sendReply(ClientWritePersistent(req.id), ClientProxy.ID)
-                    else
-                        pendingPersistence.computeIfAbsent(req.op.persistence.toInt()) { mutableListOf() }
-                            .add(propagateWriteRequest)
+                    pendingObjects.computeIfAbsent(objId) {
+                        sendRequest(ObjReplicationReq(objId), TreeProto.ID)
+                        PendingObject()
+                    }.writes.add(Pair(propagateWriteRequest, req.op.persistence))
                 }
             }
 
@@ -233,8 +245,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 } else {
                     pendingObjects.computeIfAbsent(objId) {
                         sendRequest(ObjReplicationReq(objId), TreeProto.ID)
-                        Pair(mutableListOf(), mutableListOf())
-                    }.first.add(req.id)
+                        PendingObject()
+                    }.reads.add(req.id)
                 }
             }
 
@@ -254,7 +266,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
     }
 
-    private fun onMigrationReply(rep: MigrationReply){
+    private fun onMigrationReply(rep: MigrationReply) {
         sendReply(OpReply(rep.id, null, null), ClientProxy.ID)
     }
 
@@ -269,12 +281,12 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             if (dataIndex.containsObject(objId)) {
                 val dataObj = storageWrapper.get(objId)
                 toRespond.add(FetchedObject(objId, dataObj))
+            } else {
+                pendingObjects.computeIfAbsent(objId) {
+                    toRequestParent.add(it)
+                    PendingObject()
+                }.hosts.add(req.child)
             }
-
-            pendingObjects.computeIfAbsent(objId) {
-                toRequestParent.add(it)
-                Pair(mutableListOf(), mutableListOf())
-            }.second.add(req.child)
         }
 
         if (toRespond.isNotEmpty()) sendReply(FetchObjectsRep(req.child, toRespond), TreeProto.ID)
@@ -309,14 +321,28 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             val callbacks = pendingObjects.remove(it.objectIdentifier)!!
 
             //Client reads
-            for (id in callbacks.first) {
+            for (id in callbacks.reads) {
                 if (newValue == null) sendReply(OpReply(id, null, null), ClientProxy.ID)
                 else sendReply(OpReply(id, newValue.metadata.hlc, newValue.value), ClientProxy.ID)
             }
 
+            //Client writes
+            for((propagateWriteRequest, persistence) in callbacks.writes){
+                sendRequest(propagateWriteRequest, TreeProto.ID)
+                //if persistence, also add to pending (different from read and migration pending)
+                if (persistence > 0) {
+                    if (persistence == 1.toShort() || amDc)
+                        sendReply(ClientWritePersistent(propagateWriteRequest.id), ClientProxy.ID)
+                    else
+                        pendingPersistence.computeIfAbsent(persistence.toInt()) { mutableListOf() }
+                            .add(propagateWriteRequest)
+                }
+
+            }
+
             //Child object requests
             val childResponses = mutableMapOf<Host, MutableList<FetchedObject>>()
-            for (child in callbacks.second) {
+            for (child in callbacks.hosts) {
                 childResponses.computeIfAbsent(child) { mutableListOf() }
                     .add(FetchedObject(it.objectIdentifier, newValue))
             }
@@ -346,8 +372,10 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private fun onRemoteWrite(id: WriteID, write: RemoteWrite) {
         assertOrExit(
-            dataIndex.containsObject(write.objectIdentifier),
-            "Received write for non-existent object ${write.objectIdentifier}"
+            dataIndex.containsObject(write.objectIdentifier)
+                    || pendingObjects.containsKey(write.objectIdentifier),
+            "Received write for non-existent object ${write.objectIdentifier}, " +
+                    "pending: ${pendingObjects.keys}"
         )
 
         synchronized(localTimeLock) {
@@ -359,6 +387,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         //If we used a slower (replicated/to disk) storage, we could tag write operations with the client dependency
         //to know when we can safely execute operations in parallel. Here we do them serially, so we don't need to.
         //We do not update the dataindex timestamp here, only on local writes/reads!
+        nOps++
         storageWrapper.put(write.objectIdentifier, write.objectData)
     }
 
@@ -383,6 +412,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             dataIndex.garbageCollect(System.currentTimeMillis(), config.gc_treshold, childData)
         removedObjects.forEach { storageWrapper.delete(it) }
         removedPartitions.forEach { storageWrapper.deletePartition(it) }
+        if(removedObjects.isNotEmpty() || removedPartitions.isNotEmpty())
+            logger.info("Garbage collected ${removedObjects.size} objects and ${removedPartitions.size} partitions")
         sendRequest(RemoveReplicasRequest(removedObjects, removedPartitions), TreeProto.ID)
     }
 

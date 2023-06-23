@@ -191,7 +191,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         for (i in 0 until msg.timestamps.size)
             ready.metadata[i].timestamp = msg.timestamps[i]
 
-        logger.info("PARENT-METADATA ${ready.metadata.joinToString(":", prefix = "[", postfix = "]")}")
+        logger.debug("PARENT-METADATA ${ready.metadata.joinToString(":", prefix = "[", postfix = "]")}")
 
         //Handle local persistence
         val localPersistenceUpdates = mutableMapOf<Int, Long>()
@@ -311,7 +311,10 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     }
 
     override fun onDownstreamWrite(from: Host, msg: DownstreamWrite) {
-        msg.writes.forEach { sendReply(PropagateWriteReply(it.first, it.second), Storage.ID) }
+        msg.writes.forEach {
+            logger.debug("Received downstream write for {}", it.second.objectIdentifier)
+            sendReply(PropagateWriteReply(it.first, it.second), Storage.ID)
+        }
         propagateWritesToChildren(msg.writes)
     }
 
@@ -324,6 +327,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             val localPersistenceId = idCounter++
             val newId = WriteID(id.ip, id.counter, localPersistenceId)
 
+            logger.debug("Received upstream write for {} from {}", write.objectIdentifier, child)
             sendReply(PropagateWriteReply(newId, write), Storage.ID)
 
             childState.highestPersistenceIdSeen = id.persistence
@@ -401,7 +405,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
                 }
             }
         }
-        logger.info("CHILD-METADATA $child ${msg.ts}")
+        logger.debug("CHILD-METADATA {} {}", child, msg.ts)
     }
 
     override fun onChildDisconnected(child: Host) {
@@ -431,7 +435,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         val nodeState = state as Node
 
         if (nodeState is ParentReady) {
-            logger.debug("Sending object replication request {}", request.requests)
+            logger.debug("Sending object replication request {} to {}", request.requests, nodeState.parent)
             sendMessage(ObjectReplicationRequest(request.requests), nodeState.parent, TCPChannel.CONNECTION_OUT)
         } else {
             logger.debug("Ignoring object replication request while not ready")
@@ -452,12 +456,14 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     override fun onChildObjReplicationRequest(child: Host, msg: ObjectReplicationRequest) {
         val childState = children[child]!! as ChildReady
         msg.items.forEach { childState.pendingObjects.putIfAbsent(it, mutableListOf()) }
+        logger.debug("Child {} requested objects {} ", child, msg.items)
         sendRequest(FetchObjectsReq(child, msg.items), Storage.ID)
     }
 
     override fun onChildPartitionReplicationRequest(from: Host, msg: PartitionReplicationRequest) {
         val childState = children[from]!! as ChildReady
         childState.pendingFullPartitions.putIfAbsent(msg.partition, mutableListOf())
+        logger.debug("Child {} requested partition {} ", from, msg.partition)
         sendRequest(FetchPartitionReq(from, msg.partition), Storage.ID)
     }
 
@@ -498,10 +504,12 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     }
 
     override fun onParentObjReplicationReply(parent: Host, msg: ObjectReplicationReply) {
+        logger.debug("Received object replication reply ${msg.items.map { it.objectIdentifier }} from $parent")
         sendReply(ObjReplicationRep(msg.items), Storage.ID)
     }
 
     override fun onParentPartitionReplicationReply(from: Host, msg: PartitionReplicationReply) {
+        logger.debug("Received partition replication reply ${msg.partition}")
         sendReply(PartitionReplicationRep(msg.partition, msg.objects), Storage.ID)
     }
 

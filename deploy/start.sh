@@ -2,28 +2,16 @@
 
 log_file=$1
 shift
-#c_name=$1
-#shift
-#region=$1
-#shift
-#regional_dc=$1
-#shift
-#uid=$1
-#shift
-#gid=$1
-#shift
 
-
-
-echo "Running jar..." > /proc/1/fd/1
+echo "Running server jar..." > /proc/1/fd/1
 
 java \
--DlogFilename=${log_file} \
+-DlogFilename=${log_file}.log \
 -Djava.library.path=./lib/sigar-bin \
 -Dcassandra-foreground=yes \
 -XX:+CrashOnOutOfMemoryError \
 -Dcassandra.disable_tcactive_openssl=true \
--jar tree.jar "$@" > /proc/1/fd/1 2>&1
+-jar tree.jar "$@" 2> ${log_file}.err 1> ${log_file}.out
 
 #echo "Chmoding..." > /proc/1/fd/1
 #chown ${uid}:${gid} /logs/${exp_name}/${c_name}.log

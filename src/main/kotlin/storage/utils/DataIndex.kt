@@ -7,6 +7,10 @@ open class DataIndex {
 
     private val partitions: MutableMap<String, Partition> = mutableMapOf()
 
+    override fun toString(): String {
+        return "DataIndex(${partitions.values})"
+    }
+
     open fun containsFullPartition(partitionName: String): Boolean {
         return partitions[partitionName] is FullPartition
     }
@@ -83,10 +87,18 @@ open class DataIndex {
 
     abstract class Partition(val name: String)
 
-    class FullPartition(name: String, var lastAccess: Long) : Partition(name)
+    class FullPartition(name: String, var lastAccess: Long) : Partition(name) {
+        override fun toString(): String {
+            return "Full '$name'"
+        }
+    }
 
     class PartialPartition(name: String, val keys: MutableMap<String, Long> = mutableMapOf()) :
         Partition(name) {
+
+        override fun toString(): String {
+            return "Partial '$name' with ${keys.size} keys"
+        }
 
         fun keyIterator(): Iterator<String> {
             return keys.keys.iterator()
@@ -103,6 +115,11 @@ open class DataIndex {
     }
 
     class DCDataIndex : DataIndex() {
+
+        override fun toString(): String {
+            return "DCDataIndex"
+        }
+
         override fun containsFullPartition(partitionName: String): Boolean {
             return true
         }

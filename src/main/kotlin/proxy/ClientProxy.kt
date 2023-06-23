@@ -52,6 +52,7 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
         registerMessageSerializer(channel, RequestMessage.ID, RequestMessage.Serializer)
         registerMessageSerializer(channel, ResponseMessage.ID, ResponseMessage.Serializer)
         registerMessageSerializer(channel, PersistenceMessage.ID, PersistenceMessage.Serializer)
+        registerMessageSerializer(channel, ReconfigurationMessage.ID, ReconfigurationMessage.Serializer)
 
         registerMessageHandler(
             channel,
@@ -116,7 +117,7 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
     }
 
     private fun onClientDown(event: ClientDownEvent, channel: Int) {
-        logger.info("Client disconnected " + event.client)
+        logger.info("Client disconnected " + event.client + " " + event.cause)
         clients.remove(event.client)
     }
 
