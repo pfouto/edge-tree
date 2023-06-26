@@ -52,9 +52,9 @@ class Config(properties: Properties) {
         const val NODE_STORAGE_TYPE_KEY = "node_storage_type"
         const val NODE_STORAGE_TYPE_DEFAULT = "in_memory"
         const val GC_PERIOD_KEY = "gc_period"
-        const val GC_PERIOD_DEFAULT = "10000"
+        const val GC_PERIOD_DEFAULT = "60000" // 1 min
         const val GC_TRESHOLD_KEY = "gc_treshold"
-        const val GC_TRESHOLD_DEFAULT = "30000"
+        const val GC_TRESHOLD_DEFAULT = "300000" //5 min
 
         // General
         const val HOSTNAME_KEY = "hostname"

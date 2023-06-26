@@ -108,6 +108,9 @@ data class ObjectMetadata(val hlc: HybridTimestamp, val lww: Int) {
 
 data class ObjectData(val value: ByteArray, val metadata: ObjectMetadata) {
 
+    override fun toString(): String {
+        return "ObjectData(size=${value.size}, metadata=$metadata)"
+    }
     companion object {
         fun serialize(obj: ObjectData, out: ByteBuf) {
             out.writeInt(obj.value.size)
