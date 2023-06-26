@@ -59,6 +59,10 @@ data class FetchedObject(val objectIdentifier: ObjectIdentifier, val objectData:
 }
 
 data class ObjectIdentifier(val partition: String, val key: String) {
+
+    override fun toString(): String {
+        return "$partition:$key"
+    }
     companion object {
         fun serializeSet(set: Set<ObjectIdentifier>, out: ByteBuf) {
             out.writeInt(set.size)

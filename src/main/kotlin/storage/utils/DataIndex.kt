@@ -5,7 +5,7 @@ import storage.ObjectIdentifier
 
 open class DataIndex {
 
-    private val partitions: MutableMap<String, Partition> = mutableMapOf()
+    val partitions: MutableMap<String, Partition> = mutableMapOf()
 
     override fun toString(): String {
         return "DataIndex(${partitions.values})"
@@ -27,7 +27,7 @@ open class DataIndex {
         return false
     }
 
-    fun updateTimestamp(id: ObjectIdentifier) {
+    open fun updateTimestamp(id: ObjectIdentifier) {
         partitions[id.partition]!!.let { partition ->
             if (partition is FullPartition) partition.lastAccess = System.currentTimeMillis()
             else if (partition is PartialPartition) partition.keys[id.key] = System.currentTimeMillis()
@@ -115,6 +115,10 @@ open class DataIndex {
     }
 
     class DCDataIndex : DataIndex() {
+
+        override fun updateTimestamp(id: ObjectIdentifier) {
+            return
+        }
 
         override fun toString(): String {
             return "DCDataIndex"

@@ -72,7 +72,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerRequestHandler(OpRequest.ID) { req: OpRequest, _ -> onLocalOpRequest(req) }
         registerRequestHandler(FetchObjectsReq.ID) { req: FetchObjectsReq, _ -> onFetchObjectReq(req) }
         registerRequestHandler(FetchPartitionReq.ID) { req: FetchPartitionReq, _ -> onFetchPartitionReq(req) }
-        registerReplyHandler(PropagateWriteReply.ID) { rep: PropagateWriteReply, _ -> onRemoteWrite(rep.id, rep.write) }
+        registerReplyHandler(PropagateWriteReply.ID) { rep: PropagateWriteReply, _ -> onRemoteWrite(rep.id, rep.write, rep.downstream) }
         registerReplyHandler(ObjReplicationRep.ID) { rep: ObjReplicationRep, _ -> onObjReplicationReply(rep) }
         registerReplyHandler(PersistenceUpdate.ID) { rep: PersistenceUpdate, _ -> onPersistence(rep) }
         registerReplyHandler(PartitionReplicationRep.ID) { rep: PartitionReplicationRep, _ ->
@@ -370,13 +370,17 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
     }
 
-    private fun onRemoteWrite(id: WriteID, write: RemoteWrite) {
-        assertOrExit(
-            dataIndex.containsObject(write.objectIdentifier)
-                    || pendingObjects.containsKey(write.objectIdentifier),
-            "Received write for non-existent object ${write.objectIdentifier}, " +
-                    "pending: ${pendingObjects.keys}"
-        )
+    private fun onRemoteWrite(id: WriteID, write: RemoteWrite, downstream: Boolean) {
+        if (!dataIndex.containsObject(write.objectIdentifier) && !pendingObjects.containsKey(write.objectIdentifier)) {
+            if(downstream){
+                logger.warn("Ignoring downstream write for non existent object ${write.objectIdentifier}")
+            } else {
+                logger.error("Received upstream write for non-existent object ${write.objectIdentifier}, " +
+                        "pending: ${pendingObjects.keys}")
+                exitProcess(1)
+            }
+            return
+        }
 
         synchronized(localTimeLock) {
             localTime = localTime.mergeTimestamp(write.objectData.metadata.hlc)

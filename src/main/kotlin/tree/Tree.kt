@@ -313,7 +313,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     override fun onDownstreamWrite(from: Host, msg: DownstreamWrite) {
         msg.writes.forEach {
             logger.debug("Received downstream write for {}", it.second.objectIdentifier)
-            sendReply(PropagateWriteReply(it.first, it.second), Storage.ID)
+            sendReply(PropagateWriteReply(it.first, it.second, true), Storage.ID)
         }
         propagateWritesToChildren(msg.writes)
     }
@@ -328,7 +328,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             val newId = WriteID(id.ip, id.counter, localPersistenceId)
 
             logger.debug("Received upstream write for {} from {}", write.objectIdentifier, child)
-            sendReply(PropagateWriteReply(newId, write), Storage.ID)
+            sendReply(PropagateWriteReply(newId, write, false), Storage.ID)
 
             childState.highestPersistenceIdSeen = id.persistence
             if (state !is Datacenter) {
