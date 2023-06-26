@@ -3,10 +3,16 @@
 log_file=$1
 shift
 
-echo "Running server jar..." > /proc/1/fd/1
+echo " "
+
+mkdir -p $(dirname "${log_file}")
+
+echo "$(date) Running server jar..." > /proc/1/fd/1
+
+echo "$@" > /proc/1/fd/1
 
 java \
--DlogFilename=${log_file}.log \
+-DlogFilename=${log_file} \
 -Djava.library.path=./lib/sigar-bin \
 -Dcassandra-foreground=yes \
 -XX:+CrashOnOutOfMemoryError \
@@ -16,4 +22,4 @@ java \
 #echo "Chmoding..." > /proc/1/fd/1
 #chown ${uid}:${gid} /logs/${exp_name}/${c_name}.log
 
-echo "Goodbye" > /proc/1/fd/1
+echo "$(date) Goodbye" > /proc/1/fd/1

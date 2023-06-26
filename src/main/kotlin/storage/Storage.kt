@@ -412,8 +412,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             dataIndex.garbageCollect(System.currentTimeMillis(), config.gc_treshold, childData)
         removedObjects.forEach { storageWrapper.delete(it) }
         removedPartitions.forEach { storageWrapper.deletePartition(it) }
-        if(removedObjects.isNotEmpty() || removedPartitions.isNotEmpty())
+        if(removedObjects.isNotEmpty() || removedPartitions.isNotEmpty()) {
             logger.info("Garbage collected ${removedObjects.size} objects and ${removedPartitions.size} partitions")
+            if(logger.isDebugEnabled){
+                logger.debug("Garbage collected objects: $removedObjects")
+                logger.debug("Garbage collected partitions: $removedPartitions")
+            }
+        }
         sendRequest(RemoveReplicasRequest(removedObjects, removedPartitions), TreeProto.ID)
     }
 

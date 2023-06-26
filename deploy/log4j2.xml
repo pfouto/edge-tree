@@ -5,20 +5,27 @@
             <PatternLayout pattern="%level{length=1} %d{HH:mm:ss,SSS} [%t] %logger{0} %msg%n"/>
         </Console>
 
-        <File name="MyFile" fileName="${sys:logFilename}" append="false" immediateFlush="true">
+        <File name="InfoFile" fileName="${sys:logFilename}.log" append="false" immediateFlush="true">
             <!--PatternLayout pattern="%highlight{%level{length=1}[%d{HH:mm:ss,SSS}] [%t] %logger{0}} %msg%n"/-->
             <PatternLayout pattern="%level{length=1} %d{yyyy/MM/dd-HH:mm:ss,SSS} [%t] [%logger{0}] %msg%n"/>
         </File>
-    </Appenders>
+        <File name="DebugFile" fileName="${sys:logFilename}.deb" append="false" immediateFlush="true">
+            <!--PatternLayout pattern="%highlight{%level{length=1}[%d{HH:mm:ss,SSS}] [%t] %logger{0}} %msg%n"/-->
+            <PatternLayout pattern="%level{length=1} %d{yyyy/MM/dd-HH:mm:ss,SSS} [%t] [%logger{0}] %msg%n"/>
+        </File>
+    </Appenders>InfoFile
 
     <Loggers>
         <!-- UNCOMMENT TO SPECIFY LOG LEVEL OF PACKAGES
         <Logger level="info" name="protocols.overlays"/>
         <Logger level="debug" name="protocols.dissemination"/-->
-        <!--Logger level="info" name="io.netty"/>
+        <Logger level="info" name="io.netty"/>
         <Logger level="info" name="pt.unl.fct.di.novasys.network"/>
         <Logger level="info" name="pt.unl.fct.di.novasys.channel"/>
-        <Logger level="info" name="pt.unl.fct.di.novasys.babel"/-->
+        <Logger level="info" name="pt.unl.fct.di.novasys.babel"/>
+        <Logger level="info" name="hyparflood"/>
+        <Logger level="info" name="manager"/>
+        <Logger level="info" name="proxy"/>
         <Logger level="warn" name="org.apache.cassandra"/>
 
         <!--Logger level="info" name="tree"/>
@@ -26,7 +33,8 @@
 
         <Root level="debug">
             <!--AppenderRef ref="Console" level="info"/-->
-            <AppenderRef ref="MyFile" level="info"/>
+            <AppenderRef ref="InfoFile" level="info"/>
+            <AppenderRef ref="DebugFile" level="debug"/>
         </Root>
     </Loggers>
 
