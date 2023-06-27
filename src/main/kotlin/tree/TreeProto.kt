@@ -41,7 +41,10 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
         val channelProps = Properties()
         channelProps.setProperty(TCPChannel.ADDRESS_KEY, address.hostAddress)
         channelProps.setProperty(TCPChannel.PORT_KEY, PORT.toString())
-        channelProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "true")
+        channelProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "false")
+        channelProps.setProperty(TCPChannel.CONNECT_TIMEOUT_KEY, "5000")
+        channelProps.setProperty(TCPChannel.HEARTBEAT_INTERVAL_KEY, "5000")
+        channelProps.setProperty(TCPChannel.HEARTBEAT_TOLERANCE_KEY, "20000")
         channel = createChannel(TCPChannel.NAME, channelProps)
 
         registerChannelEventHandler(channel, OutConnectionUp.EVENT_ID)

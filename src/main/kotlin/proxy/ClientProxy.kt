@@ -117,7 +117,7 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
     }
 
     private fun onClientDown(event: ClientDownEvent, channel: Int) {
-        logger.info("Client disconnected " + event.client)
+        logger.info("Client disconnected " + event.client + " " + event.cause)
         clients.remove(event.client)
     }
 

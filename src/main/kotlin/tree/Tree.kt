@@ -428,7 +428,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     }
 
     override fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable) {
-        logger.warn("Message $msg to $to failed: ${cause.localizedMessage}")
+        //logger.warn("Message $msg to $to failed: ${cause.localizedMessage}")
     }
 
     override fun onObjectReplicationRequest(request: ObjReplicationReq) {
@@ -504,7 +504,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     }
 
     override fun onParentObjReplicationReply(parent: Host, msg: ObjectReplicationReply) {
-        logger.debug("Received object replication reply ${msg.items.map { it.objectIdentifier }} from $parent")
+        logger.debug("Received object replication reply {} from {}", msg.items.map { it.objectIdentifier }, parent)
         sendReply(ObjReplicationRep(msg.items), Storage.ID)
     }
 

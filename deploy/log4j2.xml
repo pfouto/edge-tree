@@ -20,9 +20,9 @@
         <Logger level="info" name="protocols.overlays"/>
         <Logger level="debug" name="protocols.dissemination"/-->
         <Logger level="info" name="io.netty"/>
-        <Logger level="info" name="pt.unl.fct.di.novasys.network"/>
-        <Logger level="info" name="pt.unl.fct.di.novasys.channel"/>
-        <Logger level="info" name="pt.unl.fct.di.novasys.babel"/>
+        <Logger level="error" name="pt.unl.fct.di.novasys.network"/>
+        <Logger level="error" name="pt.unl.fct.di.novasys.channel"/>
+        <Logger level="error" name="pt.unl.fct.di.novasys.babel"/>
         <Logger level="info" name="hyparflood"/>
         <Logger level="info" name="manager"/>
         <Logger level="info" name="proxy"/>
