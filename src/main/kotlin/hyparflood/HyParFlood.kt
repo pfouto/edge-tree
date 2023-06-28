@@ -426,7 +426,7 @@ class HyParFlood(address: Inet4Address, config: Config) : GenericProtocol(NAME, 
     /* --------------------------------- Channel Events ---------------------------- */
 
     private fun uponOutConnectionDown(event: OutConnectionDown, channelId: Int) {
-        logger.info("Host {} is down, active{}, cause: {}", event.node, active, event.cause)
+        logger.info("Host {} is down, active{}", event.node, active)
         if (active.removePeer(event.node)) {
             triggerNotification(NeighbourDown(event.node))
             if (!active.fullWithPending(pending)) {
@@ -454,6 +454,6 @@ class HyParFlood(address: Inet4Address, config: Config) : GenericProtocol(NAME, 
     }
 
     private fun uponInConnectionDown(event: InConnectionDown, channelId: Int) {
-        logger.trace("Connection from host {} is down, active{}, cause: {}", event.node, active, event.cause)
+        logger.trace("Connection from host {} is down, active{}", event.node, active)
     }
 }

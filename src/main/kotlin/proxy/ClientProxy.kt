@@ -96,7 +96,8 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
     }
 
     private fun onOpReply(reply: OpReply) {
-        val pair = pendingOperations.remove(reply.id)!!
+        val pair = pendingOperations.remove(reply.id)
+            ?: throw IllegalStateException("Received reply for unknown operation ${reply.id}")
         sendMessage(ResponseMessage(pair.second.id, reply.hlc, reply.data), pair.first)
     }
 
@@ -119,7 +120,7 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
     }
 
     private fun onClientDown(event: ClientDownEvent, channel: Int) {
-        logger.info("Client disconnected " + event.client + " " + event.cause)
+        logger.info("Client disconnected " + event.client)
         clients.remove(event.client)
     }
 

@@ -265,7 +265,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         assertOrExit(some is ParentSync || some is ParentReady, "Connection lost while not connected  $some")
         assertOrExit(host == some.parent, "Parent mismatch")
 
-        logger.warn("Connection lost to parent $host: $cause, reconnecting")
+        logger.warn("Connection lost to parent $host, reconnecting")
         state = ParentConnecting(some.parent, some.grandparents)
         openConnection(some.parent)
     }
@@ -274,7 +274,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         val old = state as ParentConnecting
         assertOrExit(host == old.parent, "Parent mismatch")
 
-        logger.warn("Connection failed to parent $host: $cause")
+        logger.warn("Connection failed to parent $host")
         if (old.retries < MAX_RECONNECT_RETRIES) {
             state = ParentConnecting(old.parent, old.grandparents, old.retries + 1)
             openConnection(host)

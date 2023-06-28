@@ -35,6 +35,11 @@ data class WriteOperation(
         result = 31 * result + persistence
         return result
     }
+
+    override fun toString(): String {
+        return "WriteOperation(partition='$partition', key='$key', value=${value.size}}, persistence=$persistence)"
+    }
+
 }
 
 data class MigrationOperation(val hlc: HybridTimestamp, val path: List<Host>) : Operation(MIGRATION)
