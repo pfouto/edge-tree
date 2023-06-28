@@ -7,6 +7,7 @@ import pt.unl.fct.di.novasys.network.data.Host
 import storage.*
 import storage.utils.ChildDataIndex
 import tree.messaging.up.SyncRequest
+import tree.utils.ChildReady
 import tree.utils.WriteID
 
 // From Storage to Tree with a migration request
@@ -32,7 +33,7 @@ data class RemoveReplicasRequest(val deletedObjects: Set<ObjectIdentifier>, val 
 }
 
 // From Storage to Tree informing of a new child
-data class AddedChildRequest(val child: Host, val data: ChildDataIndex) : ProtoRequest(ID) {
+data class AddedChildRequest(val child: Host, val data: ChildReady) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 219
     }

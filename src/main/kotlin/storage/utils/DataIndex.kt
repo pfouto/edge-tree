@@ -2,10 +2,11 @@ package storage.utils
 
 import pt.unl.fct.di.novasys.network.data.Host
 import storage.ObjectIdentifier
+import tree.utils.ChildReady
 
 open class DataIndex {
 
-    val partitions: MutableMap<String, Partition> = mutableMapOf()
+    private val partitions: MutableMap<String, Partition> = mutableMapOf()
 
     override fun toString(): String {
         return "DataIndex(${partitions.values})"
@@ -57,7 +58,7 @@ open class DataIndex {
     open fun garbageCollect(
         now: Long,
         threshold: Long,
-        childData: MutableMap<Host, ChildDataIndex>,
+        childData: MutableMap<Host, ChildReady>,
     ): Pair<Set<ObjectIdentifier>, Set<String>> {
         val deletedObjects = mutableSetOf<ObjectIdentifier>()
         val deletedPartitions = mutableSetOf<String>()
@@ -143,7 +144,7 @@ open class DataIndex {
         override fun garbageCollect(
             now: Long,
             threshold: Long,
-            childData: MutableMap<Host, ChildDataIndex>,
+            childData: MutableMap<Host, ChildReady>,
         ): Pair<Set<ObjectIdentifier>, Set<String>> {
             throw UnsupportedOperationException("Cannot gc in DCDataIndex")
         }

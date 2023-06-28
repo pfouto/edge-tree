@@ -17,6 +17,7 @@ import storage.utils.GarbageCollectTimer
 import storage.wrappers.CassandraWrapper
 import storage.wrappers.InMemoryWrapper
 import tree.TreeProto
+import tree.utils.ChildReady
 import tree.utils.HybridTimestamp
 import tree.utils.WriteID
 import java.net.Inet4Address
@@ -41,7 +42,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private lateinit var dataIndex: DataIndex
 
-    private val childData: MutableMap<Host, ChildDataIndex> = mutableMapOf()
+    private val childData: MutableMap<Host, ChildReady> = mutableMapOf()
 
     private var amDc: Boolean = false
 
@@ -385,8 +386,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             if(downstream){
                 logger.warn("Ignoring downstream write for non existent object ${write.objectIdentifier}")
             } else {
-                logger.error("Received upstream write for non-existent object ${write.objectIdentifier}, " +
-                        "pending: ${pendingObjects.keys}")
+                logger.error("Received upstream write for non-existent object ${write.objectIdentifier}")
                 exitProcess(1)
             }
             return

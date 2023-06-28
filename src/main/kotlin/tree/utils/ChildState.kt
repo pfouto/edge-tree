@@ -34,4 +34,13 @@ class ChildReady(
     val persistenceMapper: TreeMap<Int, Int> = TreeMap(),
     var highestPersistenceIdSeen: Int = 0,
     val pendingMigrations: MutableList<MigrationRequest> = mutableListOf()
-) : ChildMeta(child, objects, childStableTime)
+) : ChildMeta(child, objects, childStableTime) {
+
+    fun containsObject(obj: ObjectIdentifier): Boolean {
+        return objects.containsObject(obj) || pendingObjects.containsKey(obj)
+    }
+
+    fun containsPartition(partition: String): Boolean {
+        return objects.containsPartition(partition) || pendingFullPartitions.containsKey(partition)
+    }
+}

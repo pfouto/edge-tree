@@ -118,9 +118,10 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
 
     override fun onDataDiffReply(reply: DataDiffReply) {
         val childState = children[reply.child]!! as ChildSync
-        children[reply.child] = ChildReady(reply.child, childState.objects, childState.childStableTime)
+        val newState = ChildReady(reply.child, childState.objects, childState.childStableTime)
+        children[reply.child] = newState
         logger.info("CHILD READY ${reply.child}")
-        sendRequest(AddedChildRequest(reply.child, childState.objects), Storage.ID)
+        sendRequest(AddedChildRequest(reply.child, newState), Storage.ID)
         updateStableTs()
         sendMessage(SyncResponse(buildReconfigurationMessage(), reply.data), reply.child, TCPChannel.CONNECTION_IN)
         sendMessage(DownstreamWrite(childState.pendingWrites), reply.child, TCPChannel.CONNECTION_IN)

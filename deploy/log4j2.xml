@@ -25,9 +25,9 @@
         <Logger level="error" name="pt.unl.fct.di.novasys.babel"/>
         <Logger level="info" name="hyparflood"/>
         <Logger level="info" name="manager"/>
-        <Logger level="info" name="proxy"/>
-        <Logger level="info" name="tree"/>
-        <Logger level="info" name="storage"/>
+        <Logger level="debug" name="proxy"/>
+        <Logger level="debug" name="tree"/>
+        <Logger level="debug" name="storage"/>
         <Logger level="warn" name="org.apache.cassandra"/>
 
         <!--Logger level="info" name="tree"/>
