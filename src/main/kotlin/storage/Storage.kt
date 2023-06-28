@@ -86,7 +86,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerRequestHandler(RemovedChildRequest.ID) { req: RemovedChildRequest, _ -> onRemovedChild(req) }
         registerReplyHandler(MigrationReply.ID) { rep: MigrationReply, _ -> onMigrationReply(rep) }
 
-        registerTimerHandler(GarbageCollectTimer.ID) { timer: GarbageCollectTimer, _ -> onGarbageCollect(timer) }
+        registerTimerHandler(GarbageCollectTimer.ID) { _: GarbageCollectTimer, _ -> onGarbageCollect() }
         Runtime.getRuntime().addShutdownHook(Thread { logger.info("$nOps $dataIndex") })
 
     }
@@ -195,6 +195,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     }
 
     private fun onLocalOpRequest(req: OpRequest) {
+        logger.debug("Received local op request {}", req)
         when (req.op) {
             is WriteOperation -> {
                 val hlc = getTimestamp()
@@ -227,6 +228,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 } else {
                     pendingObjects.computeIfAbsent(objId) {
                         sendRequest(ObjReplicationReq(objId), TreeProto.ID)
+                        logger.debug("Requesting {} from tree", objId)
                         PendingObject()
                     }.writes.add(Pair(propagateWriteRequest, req.op.persistence))
                 }
@@ -238,6 +240,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
                 if (dataIndex.containsObject(objId)) {
                     dataIndex.updateTimestamp(objId)
+                    logger.debug("Read {} served locally", req.id)
                     when (val data = storageWrapper.get(objId)) {
                         null -> sendReply(OpReply(req.id, null, null), ClientProxy.ID)
                         else -> sendReply(OpReply(req.id, data.metadata.hlc, data.value), ClientProxy.ID)
@@ -245,8 +248,10 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 } else {
                     pendingObjects.computeIfAbsent(objId) {
                         sendRequest(ObjReplicationReq(objId), TreeProto.ID)
+                        logger.debug("Requesting {} from tree", objId)
                         PendingObject()
                     }.reads.add(req.id)
+                    logger.debug("Read {} added to pending", req.id)
                 }
             }
 
@@ -290,7 +295,10 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
 
         if (toRespond.isNotEmpty()) sendReply(FetchObjectsRep(req.child, toRespond), TreeProto.ID)
-        if (toRequestParent.isNotEmpty()) sendRequest(ObjReplicationReq(toRequestParent), TreeProto.ID)
+        if (toRequestParent.isNotEmpty()) {
+            logger.debug("Requesting {} from tree", toRequestParent)
+            sendRequest(ObjReplicationReq(toRequestParent), TreeProto.ID)
+        }
     }
 
     /**
@@ -312,6 +320,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
      * A parent node sent us a requested data object
      */
     private fun onObjReplicationReply(rep: ObjReplicationRep) {
+        logger.debug("Received object replication reply {}", rep)
         rep.objects.forEach {
             val newValue: ObjectData? = if (it.objectData != null)
                 storageWrapper.put(it.objectIdentifier, it.objectData)
@@ -322,6 +331,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
             //Client reads
             for (id in callbacks.reads) {
+                logger.debug("Sending read reply to {}", id)
                 if (newValue == null) sendReply(OpReply(id, null, null), ClientProxy.ID)
                 else sendReply(OpReply(id, newValue.metadata.hlc, newValue.value), ClientProxy.ID)
             }
@@ -399,7 +409,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         //No need to re-send requests partitions/objects, since we do that when handling the SyncApply
         //No need to re-send pending persistence operations, since we do that when handling the SyncApply
 
-        sendReply(TreeReconfigurationClients(req.parents), ClientProxy.ID)
+        sendReply(TreeReconfigurationClients(req.branch), ClientProxy.ID)
 
     }
 
@@ -411,17 +421,15 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         childData[req.child] = req.data
     }
 
-    private fun onGarbageCollect(timer: GarbageCollectTimer) {
+    private fun onGarbageCollect() {
         val (removedObjects, removedPartitions) =
-            dataIndex.garbageCollect(System.currentTimeMillis(), config.gc_treshold, childData)
+            dataIndex.garbageCollect(System.currentTimeMillis(), config.gc_threshold, childData)
         removedObjects.forEach { storageWrapper.delete(it) }
         removedPartitions.forEach { storageWrapper.deletePartition(it) }
-        if(removedObjects.isNotEmpty() || removedPartitions.isNotEmpty()) {
-            logger.info("Garbage collected ${removedObjects.size} objects and ${removedPartitions.size} partitions")
-            if(logger.isDebugEnabled){
-                logger.debug("Garbage collected objects: $removedObjects")
-                logger.debug("Garbage collected partitions: $removedPartitions")
-            }
+        logger.info("Garbage collected ${removedObjects.size} objects and ${removedPartitions.size} partitions")
+        if((removedObjects.isNotEmpty() || removedPartitions.isNotEmpty()) && logger.isDebugEnabled) {
+            logger.debug("Garbage collected objects: $removedObjects")
+            logger.debug("Garbage collected partitions: $removedPartitions")
         }
         sendRequest(RemoveReplicasRequest(removedObjects, removedPartitions), TreeProto.ID)
     }

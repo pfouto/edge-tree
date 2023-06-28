@@ -151,10 +151,11 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         assertOrExit(metadata.size == reconfiguration.grandparents.size + 1, "Wrong number of timestamps")
 
         //Send new configuration to storage
-        val parentList = mutableListOf<Host>()
-        parentList.add(host)
-        parentList.addAll(reconfiguration.grandparents)
-        sendRequest(ReconfigurationApply(parentList), Storage.ID)
+        val branch = mutableListOf<Host>()
+        branch.add(self)
+        branch.add(host)
+        branch.addAll(reconfiguration.grandparents)
+        sendRequest(ReconfigurationApply(branch), Storage.ID)
 
         //Send new configuration to children
         val reconfigurationMessage = buildReconfigurationMessage()

@@ -44,6 +44,8 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
         val channelProps = Properties()
         channelProps.setProperty(SimpleServerChannel.ADDRESS_KEY, address.hostAddress)
         channelProps.setProperty(SimpleServerChannel.PORT_KEY, self.port.toString())
+        channelProps.setProperty(SimpleServerChannel.HEARTBEAT_INTERVAL_KEY, "0")
+        channelProps.setProperty(SimpleServerChannel.HEARTBEAT_TOLERANCE_KEY, "0")
         val channel = createChannel(SimpleServerChannel.NAME, channelProps)
 
         registerChannelEventHandler(channel, ClientUpEvent.EVENT_ID, this::onClientUp)
@@ -83,9 +85,9 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
     }
 
     private fun onRequestMessage(from: Host, msg: RequestMessage) {
-        logger.debug("Received message {} from {}", msg, from)
         val opId = opCounter++
         val pair = Pair(from, msg)
+        logger.debug("Client {} {} is node {}", from, msg.id, opId)
         pendingOperations[opId] = pair
         if (msg.op is WriteOperation && msg.op.persistence > 0) {
             pendingPersistence[opId] = pair

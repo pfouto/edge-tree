@@ -26,6 +26,8 @@
         <Logger level="info" name="hyparflood"/>
         <Logger level="info" name="manager"/>
         <Logger level="info" name="proxy"/>
+        <Logger level="info" name="tree"/>
+        <Logger level="info" name="storage"/>
         <Logger level="warn" name="org.apache.cassandra"/>
 
         <!--Logger level="info" name="tree"/>

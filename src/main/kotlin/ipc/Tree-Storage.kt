@@ -47,7 +47,7 @@ data class RemovedChildRequest(val child: Host) : ProtoRequest(ID) {
 
 
 // From Tree to Storage informing about a tree reconfiguration
-data class ReconfigurationApply(val parents: List<Host>) : ProtoRequest(ID) {
+data class ReconfigurationApply(val branch: List<Host>) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 217
     }

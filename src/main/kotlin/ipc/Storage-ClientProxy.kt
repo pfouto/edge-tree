@@ -6,7 +6,7 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 import pt.unl.fct.di.novasys.network.data.Host
 import tree.utils.HybridTimestamp
 
-class OpRequest(val id: Long, val op: Operation) : ProtoRequest(ID) {
+data class OpRequest(val id: Long, val op: Operation) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 401
     }
