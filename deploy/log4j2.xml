@@ -36,7 +36,7 @@
         <Root level="debug">
             <!--AppenderRef ref="Console" level="info"/-->
             <AppenderRef ref="InfoFile" level="info"/>
-            <!--AppenderRef ref="DebugFile" level="debug"/-->
+            <AppenderRef ref="DebugFile" level="debug"/>
         </Root>
     </Loggers>
 

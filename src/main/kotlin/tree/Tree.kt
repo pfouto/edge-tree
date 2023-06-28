@@ -211,7 +211,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         val iterator = parentMigrations.iterator()
         while (iterator.hasNext()) {
             val migration = iterator.next()
-            if(getClosestParentTimestamp(migration.migration.path, ready).isAfterOrEqual(migration.migration.hlc)) {
+            if (getClosestParentTimestamp(migration.migration.path, ready).isAfterOrEqual(migration.migration.hlc)) {
                 iterator.remove()
                 sendReply(MigrationReply(migration.id), Storage.ID)
             }
@@ -397,7 +397,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         childState.childStableTime = msg.ts
 
         //Check pending migrations from this child
-        if(childState is ChildReady) {
+        if (childState is ChildReady) {
             val iterator = childState.pendingMigrations.iterator()
             while (iterator.hasNext()) {
                 val mig = iterator.next()
@@ -539,40 +539,51 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     }
 
     override fun onMigrationRequest(req: MigrationRequest) {
+        logger.debug("Migration msg: {}", req)
         if (req.migration.path.contains(self)) {
+            logger.debug("Mig ${req.id} from a child")
             //Came from a child node
             for ((child, childState) in children) {
                 if (childState is ChildReady && req.migration.path.contains(child)) {
                     //Found the child that we must track
-                    if (childState.childStableTime.isAfterOrEqual(req.migration.hlc))
+                    if (childState.childStableTime.isAfterOrEqual(req.migration.hlc)) {
+                        logger.debug("Mig {} from a stable child {}, responding immediately", req.id, child)
                         sendReply(MigrationReply(req.id), Storage.ID)
-                    else
+                    } else {
+                        logger.debug("Mig {} from a non-stable child {}, waiting for it to be stable", req.id, child)
                         childState.pendingMigrations.add(req)
+                    }
                     return
                 }
-                // Child not found, probably dead, so we just respond with ok!
-                sendReply(MigrationReply(req.id), Storage.ID)
             }
+            // Child not found, probably dead, so we just respond with ok!
+            logger.debug("Mig ${req.id} from a dead child, responding immediately")
+            sendReply(MigrationReply(req.id), Storage.ID)
         } else {
+            logger.debug("Mig ${req.id} from diff branch")
             //Came from a different branch
             val myState = state as Node
             if (myState is ParentReady &&
                 getClosestParentTimestamp(req.migration.path, myState)
-                    .isAfterOrEqual(req.migration.hlc))
+                    .isAfterOrEqual(req.migration.hlc)
+            ) {
+                logger.debug("Mig ${req.id} responding immediately")
                 sendReply(MigrationReply(req.id), Storage.ID)
-            else
+            } else {
+                logger.debug("Mig ${req.id} waiting for parent to be ready")
                 parentMigrations.add(req)
+            }
 
         }
     }
 
     private fun getClosestParentTimestamp(clientPath: List<Host>, myState: ParentReady): HybridTimestamp {
         //Must always return something (since at the very least the root is shared)
-        if(clientPath.contains(myState.parent))
+        if (clientPath.contains(myState.parent))
             return myState.metadata[0].timestamp
-        for(i in 1 until myState.grandparents.size) {
-            if(clientPath.contains(myState.grandparents[i]))
-                return myState.metadata[i+1].timestamp
+        for (i in 1 until myState.grandparents.size) {
+            if (clientPath.contains(myState.grandparents[i]))
+                return myState.metadata[i + 1].timestamp
         }
         throw IllegalStateException("Could not find a common parent")
     }
