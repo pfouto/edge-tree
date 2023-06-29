@@ -14,6 +14,7 @@ import pt.unl.fct.di.novasys.network.data.Host
 import storage.utils.ChildDataIndex
 import storage.utils.DataIndex
 import storage.utils.GarbageCollectTimer
+import storage.utils.LogNObjectsTimer
 import storage.wrappers.CassandraWrapper
 import storage.wrappers.InMemoryWrapper
 import tree.TreeProto
@@ -88,6 +89,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerReplyHandler(MigrationReply.ID) { rep: MigrationReply, _ -> onMigrationReply(rep) }
 
         registerTimerHandler(GarbageCollectTimer.ID) { _: GarbageCollectTimer, _ -> onGarbageCollect() }
+        registerTimerHandler(LogNObjectsTimer.ID) { _: LogNObjectsTimer, _ -> onLogNObjects() }
         Runtime.getRuntime().addShutdownHook(Thread { logger.info("$nOps $dataIndex") })
 
     }
@@ -127,6 +129,11 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 }
             }
         }
+
+        if(config.log_n_objects > 0) {
+            setupPeriodicTimer(LogNObjectsTimer(), config.log_n_objects, config.log_n_objects)
+        }
+
         storageWrapper.initialize()
     }
 
@@ -339,6 +346,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
             //Client writes
             for((propagateWriteRequest, persistence) in callbacks.writes){
+                logger.debug("Propagating pending write {} {}", propagateWriteRequest, persistence)
                 sendRequest(propagateWriteRequest, TreeProto.ID)
                 //if persistence, also add to pending (different from read and migration pending)
                 if (persistence > 0) {
@@ -432,6 +440,10 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             logger.debug("Garbage collected partitions: $removedPartitions")
         }
         sendRequest(RemoveReplicasRequest(removedObjects, removedPartitions), TreeProto.ID)
+    }
+
+    private fun onLogNObjects(){
+        logger.info("nobjects: ${dataIndex.nObjects()}")
     }
 
     /**

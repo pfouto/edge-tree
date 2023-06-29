@@ -11,3 +11,13 @@ class GarbageCollectTimer : ProtoTimer(ID) {
         return this
     }
 }
+
+class LogNObjectsTimer: ProtoTimer(ID) {
+    companion object {
+        const val ID: Short = 502
+    }
+
+    override fun clone(): ProtoTimer {
+        return this
+    }
+}

@@ -55,6 +55,8 @@ class Config(properties: Properties) {
         const val GC_PERIOD_DEFAULT = "60000" // 1 min
         const val GC_TRESHOLD_KEY = "gc_threshold"
         const val GC_TRESHOLD_DEFAULT = "300000" //5 min
+        const val LOG_N_OBJECTS_KEY = "log_n_objects"
+        const val LOG_N_OBJECTS_DEFAULT = "0"
 
         // General
         const val HOSTNAME_KEY = "hostname"
@@ -100,6 +102,7 @@ class Config(properties: Properties) {
     val node_storage_type: String
     val gc_period: Long
     val gc_threshold: Long
+    val log_n_objects: Long
 
     val hostname: String
     val ip_addr: String
@@ -148,6 +151,7 @@ class Config(properties: Properties) {
         node_storage_type = properties.getProperty(NODE_STORAGE_TYPE_KEY, NODE_STORAGE_TYPE_DEFAULT)
         gc_period = properties.getProperty(GC_PERIOD_KEY, GC_PERIOD_DEFAULT).toLong()
         gc_threshold = properties.getProperty(GC_TRESHOLD_KEY, GC_TRESHOLD_DEFAULT).toLong()
+        log_n_objects = properties.getProperty(LOG_N_OBJECTS_KEY, LOG_N_OBJECTS_DEFAULT).toLong()
 
         hostname = properties.getProperty(HOSTNAME_KEY)
         ip_addr = properties.getProperty(IP_ADDR_KEY)

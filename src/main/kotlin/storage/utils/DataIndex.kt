@@ -86,6 +86,16 @@ open class DataIndex {
         return Pair(deletedObjects, deletedPartitions)
     }
 
+    fun nObjects(): Int {
+        return partitions.values.sumOf {
+            when (it) {
+                is FullPartition -> 0
+                is PartialPartition -> it.keys.size
+                else -> 0
+            }
+        }
+    }
+
     abstract class Partition(val name: String)
 
     class FullPartition(name: String, var lastAccess: Long) : Partition(name) {

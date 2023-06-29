@@ -219,7 +219,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
 
         //Handle child persistence
         updateStableTs()
-        val timestamps = fetchUpstreamTimestamps()
+        val stamps = fetchUpstreamTimestamps()
         for (childState in children.values) {
             if (childState is ChildReady) {
                 val childPersistence = mutableMapOf<Int, Int>()
@@ -231,11 +231,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
                             childState.persistenceMapper.headMap(highestOp, true).clear()
                     }
                 }
-                sendMessage(
-                    DownstreamMetadata(timestamps, childPersistence),
-                    childState.child,
-                    TCPChannel.CONNECTION_IN
-                )
+                sendMessage(DownstreamMetadata(stamps, childPersistence), childState.child, TCPChannel.CONNECTION_IN)
             }
         }
     }
@@ -332,9 +328,9 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             logger.debug("Received upstream write for {} from {}", write.objectIdentifier, child)
             sendReply(PropagateWriteReply(newId, write, false), Storage.ID)
 
-            childState.highestPersistenceIdSeen = id.persistence
+            childState.highestPersistenceIdSeen = id.persistenceId
             if (state !is Datacenter) {
-                childState.persistenceMapper[localPersistenceId] = id.persistence
+                childState.persistenceMapper[localPersistenceId] = id.persistenceId
                 transformed.add(Pair(newId, write))
             }
         }

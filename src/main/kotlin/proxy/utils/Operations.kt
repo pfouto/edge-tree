@@ -37,7 +37,7 @@ data class WriteOperation(
     }
 
     override fun toString(): String {
-        return "WriteOperation(partition='$partition', key='$key', value=${value.size}}, persistence=$persistence)"
+        return "WriteOperation($partition:$key, value=${value.size}}, persistence=$persistence)"
     }
 
 }

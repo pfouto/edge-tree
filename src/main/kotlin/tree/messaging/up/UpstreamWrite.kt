@@ -20,7 +20,7 @@ data class UpstreamWrite(val writes: List<Pair<WriteID, RemoteWrite>>) : ProtoMe
             for (op in obj.writes) {
                 buffer.writeInt(op.first.ip)
                 buffer.writeInt(op.first.counter)
-                buffer.writeInt(op.first.persistence)
+                buffer.writeInt(op.first.persistenceId)
                 RemoteWrite.serialize(op.second, buffer)
             }
         }

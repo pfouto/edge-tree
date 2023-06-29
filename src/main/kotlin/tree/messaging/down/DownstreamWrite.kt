@@ -21,7 +21,7 @@ data class DownstreamWrite(val writes: List<Pair<WriteID, RemoteWrite>>) : Proto
             for (write in msg.writes) {
                 out.writeInt(write.first.ip)
                 out.writeInt(write.first.counter)
-                out.writeInt(write.first.persistence)
+                out.writeInt(write.first.persistenceId)
                 RemoteWrite.serialize(write.second, out)
             }
         }

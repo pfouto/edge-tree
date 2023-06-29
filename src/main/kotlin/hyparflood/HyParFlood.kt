@@ -436,7 +436,7 @@ class HyParFlood(address: Inet4Address, config: Config) : GenericProtocol(NAME, 
     }
 
     private fun uponOutConnectionFailed(event: OutConnectionFailed<*>, channelId: Int) {
-        logger.info("Connection to host {} failed", event.node)
+        logger.info("Connection to host {} failed {}", event.node, event.cause)
         if (active.removePeer(event.node)) {
             triggerNotification(NeighbourDown(event.node))
             if (!active.fullWithPending(pending)) {
