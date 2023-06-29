@@ -5,20 +5,19 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoReply
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 import pt.unl.fct.di.novasys.network.data.Host
 import storage.*
-import storage.utils.ChildDataIndex
 import tree.messaging.up.SyncRequest
 import tree.utils.ChildReady
 import tree.utils.WriteID
 
 // From Storage to Tree with a migration request
-data class MigrationRequest(val id: Long, val migration: MigrationOperation) : ProtoRequest(ID){
+data class MigrationRequest(val storageId: Long, val migration: MigrationOperation) : ProtoRequest(ID){
     companion object {
         const val ID: Short = 221
     }
 }
 
 // From Tree to Storage with a migration reply
-data class MigrationReply(val id: Long) : ProtoReply(ID){
+data class MigrationReply(val storageId: Long) : ProtoReply(ID){
     companion object {
         const val ID: Short = 222
     }
@@ -156,20 +155,20 @@ data class FetchPartitionRep(val child: Host, val partition: String, val objects
 }
 
 // From Tree to Storage with a remote write to be applied locally
-data class PropagateWriteReply(val id: WriteID, val write: RemoteWrite, val downstream: Boolean) : ProtoReply(ID) {
+data class PropagateWriteReply(val writeId: WriteID, val write: RemoteWrite, val downstream: Boolean) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 209
     }
 }
 
 // From Storage to Tree with a local write to be propagated to the tree
-data class PropagateWriteRequest(val id: Long, val write: RemoteWrite) : ProtoRequest(ID) {
+data class PropagateWriteRequest(val storageId: Int, val write: RemoteWrite, val persistence: Short) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 210
     }
 }
 
-data class PersistenceUpdate(val persistenceMap: Map<Int, Long>) : ProtoReply(ID) {
+data class PersistenceUpdate(val persistenceMap: Map<Int, Int>) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 211
     }

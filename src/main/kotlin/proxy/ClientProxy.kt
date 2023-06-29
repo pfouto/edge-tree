@@ -30,7 +30,7 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
 
     private val clients: MutableSet<Host> = mutableSetOf()
 
-    private var opCounter = 0L
+    private var proxyIdCounter = 0L
 
     private val pendingOperations = mutableMapOf<Long, Pair<Host, RequestMessage>>()
     private val pendingPersistence = mutableMapOf<Long, Pair<Host, RequestMessage>>()
@@ -85,24 +85,24 @@ class ClientProxy(address: Inet4Address, config: Config) : GenericProtocol(NAME,
     }
 
     private fun onRequestMessage(from: Host, msg: RequestMessage) {
-        val opId = opCounter++
+        val proxyId = proxyIdCounter++
         val pair = Pair(from, msg)
-        logger.debug("Client {} {} is node {}", from, msg.id, opId)
-        pendingOperations[opId] = pair
+        logger.debug("ID-MAPPING client {} {} proxy {}", from, msg.id, proxyId)
+        pendingOperations[proxyId] = pair
         if (msg.op is WriteOperation && msg.op.persistence > 0) {
-            pendingPersistence[opId] = pair
+            pendingPersistence[proxyId] = pair
         }
-        sendRequest(OpRequest(opId, msg.op), Storage.ID)
+        sendRequest(OpRequest(proxyId, msg.op), Storage.ID)
     }
 
     private fun onOpReply(reply: OpReply) {
-        val pair = pendingOperations.remove(reply.id)
-            ?: throw IllegalStateException("Received reply for unknown operation ${reply.id}")
+        val pair = pendingOperations.remove(reply.proxyId)
+            ?: throw IllegalStateException("Received reply for unknown operation ${reply.proxyId}")
         sendMessage(ResponseMessage(pair.second.id, reply.hlc, reply.data), pair.first)
     }
 
     private fun onClientWritePersistent(rep: ClientWritePersistent) {
-        val pair = pendingPersistence.remove(rep.id)!!
+        val pair = pendingPersistence.remove(rep.proxyId)!!
         sendMessage(PersistenceMessage(pair.second.id), pair.first)
     }
 

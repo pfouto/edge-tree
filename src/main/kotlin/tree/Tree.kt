@@ -39,10 +39,10 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     private val pendingParentRemoteWrites = mutableListOf<Pair<WriteID, RemoteWrite>>()
 
     private val ipInt = ByteBuffer.wrap(address.address).getInt()
-    private var idCounter = 0
+    private var persistenceIdCounter = 0
 
     //Persistence
-    private val localPersistenceMapper = TreeMap<Int, Long>()
+    private val localPersistenceMapper = TreeMap<Int, Int>()
 
     //Migrations
     private val parentMigrations = mutableListOf<MigrationRequest>() //Unlocks on downstream
@@ -196,7 +196,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         logger.debug("PARENT-METADATA ${ready.metadata.joinToString(":", prefix = "[", postfix = "]")}")
 
         //Handle local persistence
-        val localPersistenceUpdates = mutableMapOf<Int, Long>()
+        val localPersistenceUpdates = mutableMapOf<Int, Int>()
         msg.persistence.forEach { (level, highestOp) ->
             val value = localPersistenceMapper.floorEntry(highestOp)?.value
             if (value != null) {
@@ -213,7 +213,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             val migration = iterator.next()
             if (getClosestParentTimestamp(migration.migration.path, ready).isAfterOrEqual(migration.migration.hlc)) {
                 iterator.remove()
-                sendReply(MigrationReply(migration.id), Storage.ID)
+                sendReply(MigrationReply(migration.storageId), Storage.ID)
             }
         }
 
@@ -322,7 +322,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         val transformed = mutableListOf<Pair<WriteID, RemoteWrite>>()
 
         msg.writes.forEach { (id, write) ->
-            val localPersistenceId = idCounter++
+            val localPersistenceId = persistenceIdCounter++
             val newId = WriteID(id.ip, id.counter, localPersistenceId)
 
             logger.debug("Received upstream write for {} from {}", write.objectIdentifier, child)
@@ -342,11 +342,11 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     }
 
     override fun onPropagateLocalWrite(req: PropagateWriteRequest) {
-        val opID = idCounter++
-        val writeID = WriteID(ipInt, opID, opID)
+        val localPersistenceId = persistenceIdCounter++
+        val writeID = WriteID(ipInt, localPersistenceId, localPersistenceId)
 
-        if (state !is Datacenter)
-            localPersistenceMapper[opID] = req.id
+        if (state !is Datacenter && req.persistence > 1)
+            localPersistenceMapper[localPersistenceId] = req.storageId
 
         when (val parentState = state) {
             is ParentSync, is ParentConnecting, is ParentConnected ->
@@ -399,7 +399,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
                 val mig = iterator.next()
                 if (msg.ts.isAfterOrEqual(mig.migration.hlc)) {
                     iterator.remove()
-                    sendReply(MigrationReply(mig.id), Storage.ID)
+                    sendReply(MigrationReply(mig.storageId), Storage.ID)
                 }
             }
         }
@@ -411,7 +411,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         if (remove is ChildReady) {
             sendRequest(RemovedChildRequest(child), Storage.ID)
             remove.pendingMigrations.forEach { mig ->
-                sendReply(MigrationReply(mig.id), Storage.ID)
+                sendReply(MigrationReply(mig.storageId), Storage.ID)
             }
         }
         updateStableTs()
@@ -537,36 +537,36 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     override fun onMigrationRequest(req: MigrationRequest) {
         logger.debug("Migration msg: {}", req)
         if (req.migration.path.contains(self)) {
-            logger.debug("Mig ${req.id} from a child")
+            logger.debug("Mig ${req.storageId} from a child")
             //Came from a child node
             for ((child, childState) in children) {
                 if (childState is ChildReady && req.migration.path.contains(child)) {
                     //Found the child that we must track
                     if (childState.childStableTime.isAfterOrEqual(req.migration.hlc)) {
-                        logger.debug("Mig {} from a stable child {}, responding immediately", req.id, child)
-                        sendReply(MigrationReply(req.id), Storage.ID)
+                        logger.debug("Mig {} from a stable child {}, responding immediately", req.storageId, child)
+                        sendReply(MigrationReply(req.storageId), Storage.ID)
                     } else {
-                        logger.debug("Mig {} from a non-stable child {}, waiting for it to be stable", req.id, child)
+                        logger.debug("Mig {} from a non-stable child {}, waiting for it to be stable", req.storageId, child)
                         childState.pendingMigrations.add(req)
                     }
                     return
                 }
             }
             // Child not found, probably dead, so we just respond with ok!
-            logger.debug("Mig ${req.id} from a dead child, responding immediately")
-            sendReply(MigrationReply(req.id), Storage.ID)
+            logger.debug("Mig ${req.storageId} from a dead child, responding immediately")
+            sendReply(MigrationReply(req.storageId), Storage.ID)
         } else {
-            logger.debug("Mig ${req.id} from diff branch")
+            logger.debug("Mig ${req.storageId} from diff branch")
             //Came from a different branch
             val myState = state as Node
             if (myState is ParentReady &&
                 getClosestParentTimestamp(req.migration.path, myState)
                     .isAfterOrEqual(req.migration.hlc)
             ) {
-                logger.debug("Mig ${req.id} responding immediately")
-                sendReply(MigrationReply(req.id), Storage.ID)
+                logger.debug("Mig ${req.storageId} responding immediately")
+                sendReply(MigrationReply(req.storageId), Storage.ID)
             } else {
-                logger.debug("Mig ${req.id} waiting for parent to be ready")
+                logger.debug("Mig ${req.storageId} waiting for parent to be ready")
                 parentMigrations.add(req)
             }
 
