@@ -56,10 +56,12 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     private var localTime: HybridTimestamp = HybridTimestamp(getTimeMillis(), 0)
 
     data class PendingWriteOp(val proxyId: Long, val write: RemoteWrite, val persistence: Short)
-    data class PendingObject(val reads: MutableList<Long> = mutableListOf(),
-                             val writes: MutableList<PendingWriteOp> = mutableListOf(),
-                             val hosts: MutableList<Host> = mutableListOf()
+    data class PendingObject(
+        val reads: MutableList<Long> = mutableListOf(),
+        val writes: MutableList<PendingWriteOp> = mutableListOf(),
+        val hosts: MutableList<Host> = mutableListOf(),
     )
+
     // Pending reads/writes and data requests for each pending object
     private val pendingObjects = mutableMapOf<ObjectIdentifier, PendingObject>()
 
@@ -69,7 +71,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     private val proxyMapper = mutableMapOf<Int, Long>()
     private val pendingPersistence = mutableMapOf<Int, MutableList<PropagateWriteRequest>>()
 
-    private var nOps = 0
+    data class Count(var local: Int = 0, var remote: Int = 0) {
+        override fun toString(): String {
+            return "$local:$remote"
+        }
+    }
+
+    private var nOps = mutableMapOf<String, Count>()
 
     init {
         subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
@@ -78,7 +86,13 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerRequestHandler(OpRequest.ID) { req: OpRequest, _ -> onLocalOpRequest(req) }
         registerRequestHandler(FetchObjectsReq.ID) { req: FetchObjectsReq, _ -> onFetchObjectReq(req) }
         registerRequestHandler(FetchPartitionReq.ID) { req: FetchPartitionReq, _ -> onFetchPartitionReq(req) }
-        registerReplyHandler(PropagateWriteReply.ID) { rep: PropagateWriteReply, _ -> onRemoteWrite(rep.writeId, rep.write, rep.downstream) }
+        registerReplyHandler(PropagateWriteReply.ID) { rep: PropagateWriteReply, _ ->
+            onRemoteWrite(
+                rep.writeId,
+                rep.write,
+                rep.downstream
+            )
+        }
         registerReplyHandler(ObjReplicationRep.ID) { rep: ObjReplicationRep, _ -> onObjReplicationReply(rep) }
         registerReplyHandler(PersistenceUpdate.ID) { rep: PersistenceUpdate, _ -> onPersistence(rep) }
         registerReplyHandler(PartitionReplicationRep.ID) { rep: PartitionReplicationRep, _ ->
@@ -94,7 +108,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
         registerTimerHandler(GarbageCollectTimer.ID) { _: GarbageCollectTimer, _ -> onGarbageCollect() }
         registerTimerHandler(LogNObjectsTimer.ID) { _: LogNObjectsTimer, _ -> onLogNObjects() }
-        Runtime.getRuntime().addShutdownHook(Thread { logger.info("$nOps $dataIndex") })
+        Runtime.getRuntime().addShutdownHook(Thread {
+            logger.info("${nOps.values.sumOf { it.local }}:${nOps.values.sumOf { it.remote }} ${nOps.toSortedMap()} $dataIndex")
+        })
 
     }
 
@@ -134,7 +150,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             }
         }
 
-        if(config.log_n_objects > 0) {
+        if (config.log_n_objects > 0) {
             setupPeriodicTimer(LogNObjectsTimer(), config.log_n_objects, config.log_n_objects)
         }
 
@@ -214,15 +230,11 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 //Even if not present, we can complete the operation. After fetching the data,
                 // LWW will converge to the correct value
                 storageWrapper.put(objId, objData)
-                nOps++
+                nOps.computeIfAbsent(req.op.partition) { Count() }.local++
 
                 val remoteWrite = RemoteWrite(objId, objData)
 
-
-                //TODO print id for visibility time purposes (without persistence id)
-
                 sendReply(OpReply(req.proxyId, hlc, null), ClientProxy.ID)
-
 
                 //Check if available locally, if not, send replication request to tree
                 if (dataIndex.containsObject(objId)) {
@@ -276,6 +288,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             is PartitionFetchOperation -> {
                 pendingFullPartitions.computeIfAbsent(req.op.partition) {
                     sendRequest(PartitionReplicationReq(req.op.partition), TreeProto.ID)
+                    logger.info("Requesting full partition {}", req.op.partition)
                     mutableListOf()
                 }
                 sendReply(OpReply(req.proxyId, null, null), ClientProxy.ID)
@@ -355,10 +368,12 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             }
 
             //Client writes
-            for(pendingWrite in callbacks.writes){
+            for (pendingWrite in callbacks.writes) {
                 val storageId = storageIdCounter++
-                logger.debug("ID-MAPPING proxy {} storage {} req {} {}",
-                    pendingWrite.proxyId, storageId, pendingWrite.write, pendingWrite.persistence)
+                logger.debug(
+                    "ID-MAPPING proxy {} storage {} req {} {}",
+                    pendingWrite.proxyId, storageId, pendingWrite.write, pendingWrite.persistence
+                )
                 val request = PropagateWriteRequest(storageId, pendingWrite.write, pendingWrite.persistence)
                 sendRequest(request, TreeProto.ID)
                 //if persistence, also add to pending (different from read and migration pending)
@@ -393,6 +408,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
         val result = dataIndex.addFullPartition(rep.partition)
         assertOrExit(result, "Received partition replication for already existing full partition ${rep.partition}")
+
+        logger.info("Received full partition {}", rep.partition)
+
         rep.objects.forEach { (key, objData) ->
             storageWrapper.put(ObjectIdentifier(rep.partition, key), objData)
         }
@@ -406,8 +424,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private fun onRemoteWrite(id: WriteID, write: RemoteWrite, downstream: Boolean) {
         if (!dataIndex.containsObject(write.objectIdentifier) && !pendingObjects.containsKey(write.objectIdentifier)) {
-            if(downstream){
-                logger.warn("Ignoring downstream write for non existent object ${write.objectIdentifier}")
+            if (downstream) {
+                logger.debug("Ignoring downstream write for non existent object {}", write.objectIdentifier)
             } else {
                 logger.error("Received upstream write for non-existent object ${write.objectIdentifier}")
                 exitProcess(1)
@@ -424,7 +442,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         //If we used a slower (replicated/to disk) storage, we could tag write operations with the client dependency
         //to know when we can safely execute operations in parallel. Here we do them serially, so we don't need to.
         //We do not update the dataindex timestamp here, only on local writes/reads!
-        nOps++
+        nOps.computeIfAbsent(write.objectIdentifier.partition) { Count() }.remote++
         storageWrapper.put(write.objectIdentifier, write.objectData)
     }
 
@@ -446,16 +464,20 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 newList.add(newRequest)
                 sendRequest(newRequest, TreeProto.ID)
             }
-            pendingPersistence[level] =  newList
+            pendingPersistence[level] = newList
         }
 
         sendReply(TreeReconfigurationClients(req.branch), ClientProxy.ID)
 
     }
 
-    private fun onRemovedChild(req: RemovedChildRequest) { childData.remove(req.child) }
+    private fun onRemovedChild(req: RemovedChildRequest) {
+        childData.remove(req.child)
+    }
 
-    private fun onAddedChild(req: AddedChildRequest) { childData[req.child] = req.data }
+    private fun onAddedChild(req: AddedChildRequest) {
+        childData[req.child] = req.data
+    }
 
     private fun onGarbageCollect() {
         val (removedObjects, removedPartitions) =
@@ -463,14 +485,14 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         removedObjects.forEach { storageWrapper.delete(it) }
         removedPartitions.forEach { storageWrapper.deletePartition(it) }
         logger.info("Garbage collected ${removedObjects.size} objects and ${removedPartitions.size} partitions")
-        if((removedObjects.isNotEmpty() || removedPartitions.isNotEmpty()) && logger.isDebugEnabled) {
+        if ((removedObjects.isNotEmpty() || removedPartitions.isNotEmpty()) && logger.isDebugEnabled) {
             logger.debug("Garbage collected objects: $removedObjects")
             logger.debug("Garbage collected partitions: $removedPartitions")
         }
         sendRequest(RemoveReplicasRequest(removedObjects, removedPartitions), TreeProto.ID)
     }
 
-    private fun onLogNObjects(){
+    private fun onLogNObjects() {
         logger.info("nobjects: ${dataIndex.nObjects()}")
     }
 
@@ -484,14 +506,20 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             if (persistenceLevel == Int.MAX_VALUE) {
                 pendingPersistence.forEach { (_, opList) ->
                     while (opList.isNotEmpty() && opList.first().storageId <= id) {
-                        sendReply(ClientWritePersistent(proxyMapper.remove(opList.removeFirst().storageId)!!), ClientProxy.ID)
+                        sendReply(
+                            ClientWritePersistent(proxyMapper.remove(opList.removeFirst().storageId)!!),
+                            ClientProxy.ID
+                        )
                     }
                 }
             } else {
                 val pending = pendingPersistence[persistenceLevel]
                 if (pending != null) {
                     while (pending.isNotEmpty() && pending.first().storageId <= id) {
-                        sendReply(ClientWritePersistent(proxyMapper.remove(pending.removeFirst().storageId)!!), ClientProxy.ID)
+                        sendReply(
+                            ClientWritePersistent(proxyMapper.remove(pending.removeFirst().storageId)!!),
+                            ClientProxy.ID
+                        )
                     }
                 }
             }

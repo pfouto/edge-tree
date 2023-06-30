@@ -9,7 +9,7 @@ open class DataIndex {
     private val partitions: MutableMap<String, Partition> = mutableMapOf()
 
     override fun toString(): String {
-        return "DataIndex(${partitions.values})"
+        return "DataIndex(${partitions.toSortedMap().values})"
     }
 
     open fun containsFullPartition(partitionName: String): Boolean {
@@ -108,7 +108,7 @@ open class DataIndex {
         Partition(name) {
 
         override fun toString(): String {
-            return "Partial '$name' with ${keys.size} keys"
+            return "Partial '$name' ${keys.size}"
         }
 
         fun keyIterator(): Iterator<String> {

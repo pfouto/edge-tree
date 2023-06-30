@@ -16,6 +16,7 @@ import java.net.Inet4Address
 import java.nio.ByteBuffer
 import java.util.*
 import java.util.function.Supplier
+import kotlin.math.log
 import kotlin.system.exitProcess
 
 class Tree(address: Inet4Address, config: Config, private val timestampReader: Supplier<HybridTimestamp>) :
@@ -195,17 +196,19 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
 
         logger.debug("PARENT-METADATA ${ready.metadata.joinToString(":", prefix = "[", postfix = "]")}")
 
+        val oldSize = localPersistenceMapper.size;
         //Handle local persistence
         val localPersistenceUpdates = mutableMapOf<Int, Int>()
         msg.persistence.forEach { (level, highestOp) ->
-            val value = localPersistenceMapper.floorEntry(highestOp)?.value
-            if (value != null) {
-                localPersistenceUpdates[level] = value
+            val storageId = localPersistenceMapper.floorEntry(highestOp)?.value
+            if (storageId != null) {
+                localPersistenceUpdates[if(level == Int.MAX_VALUE) level else (level+1)] = storageId
                 if (level == Int.MAX_VALUE)
                     localPersistenceMapper.headMap(highestOp, true).clear()
             }
         }
         sendReply(PersistenceUpdate(localPersistenceUpdates), Storage.ID)
+        logger.info("Pending DC persistence {} -> {}", oldSize, localPersistenceMapper.size)
 
         //Handle migrations
         val iterator = parentMigrations.iterator()
@@ -223,14 +226,20 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         for (childState in children.values) {
             if (childState is ChildReady) {
                 val childPersistence = mutableMapOf<Int, Int>()
+
+
                 msg.persistence.forEach { (level, highestOp) ->
-                    val value = childState.persistenceMapper.floorEntry(highestOp)?.value
-                    if (value != null) {
-                        childPersistence[level] = value
+                    //Map from my persistenceId to child persistenceId
+                    val childPersistenceId = childState.persistenceMapper.floorEntry(highestOp)?.value
+
+                    if (childPersistenceId != null) {
+                        childPersistence[if (level == Int.MAX_VALUE) level else (level +1)] = childPersistenceId
                         if (level == Int.MAX_VALUE)
                             childState.persistenceMapper.headMap(highestOp, true).clear()
                     }
                 }
+                //Add from myself
+                childPersistence[1] = childState.highestPersistenceIdSeen
                 sendMessage(DownstreamMetadata(stamps, childPersistence), childState.child, TCPChannel.CONNECTION_IN)
             }
         }
@@ -310,6 +319,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
 
     override fun onDownstreamWrite(from: Host, msg: DownstreamWrite) {
         msg.writes.forEach {
+            logger.debug("RW {}:{}", it.first.ip, it.first.counter )
             logger.debug("Received downstream write for {}", it.second.objectIdentifier)
             sendReply(PropagateWriteReply(it.first, it.second, true), Storage.ID)
         }
@@ -326,6 +336,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             val newId = WriteID(id.ip, id.counter, localPersistenceId)
             transformed.add(Pair(newId, write))
 
+            logger.debug("RW {}:{}", id.ip, id.counter )
             logger.debug("Received upstream write for {} from {}", write.objectIdentifier, child)
             sendReply(PropagateWriteReply(newId, write, false), Storage.ID)
 
@@ -345,8 +356,9 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     override fun onPropagateLocalWrite(req: PropagateWriteRequest) {
         val localPersistenceId = persistenceIdCounter++
         val writeID = WriteID(ipInt, localPersistenceId, localPersistenceId)
+        logger.debug("LW {}:{} {}", writeID.ip, writeID.counter, req.storageId)
 
-        if (state !is Datacenter && req.persistence > 1)
+        if (state !is Datacenter)
             localPersistenceMapper[localPersistenceId] = req.storageId
 
         when (val parentState = state) {

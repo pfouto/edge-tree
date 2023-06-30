@@ -145,7 +145,8 @@ class HyParFlood(address: Inet4Address, config: Config) : GenericProtocol(NAME, 
             logger.debug("Sent JoinMessage to {}", contactHost)
             logger.trace("Sent {} to {}", m, contactHost)
 
-            setupTimer(JoinTimeout(contactHost), joinTimeout.toLong())
+            setupTimer(JoinTimeout(contactHost),
+                joinTimeout.toLong() + rnd.nextInt(joinTimeout.toInt()/2) - joinTimeout.toLong() / 4)
         } else
             logger.info("Initializing, no contact")
 
@@ -436,7 +437,7 @@ class HyParFlood(address: Inet4Address, config: Config) : GenericProtocol(NAME, 
     }
 
     private fun uponOutConnectionFailed(event: OutConnectionFailed<*>, channelId: Int) {
-        logger.info("Connection to host {} failed", event.node)
+        logger.info("Connection to host {} failed {}", event.node, event.cause)
         if (active.removePeer(event.node)) {
             triggerNotification(NeighbourDown(event.node))
             if (!active.fullWithPending(pending)) {

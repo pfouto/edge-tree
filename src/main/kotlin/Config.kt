@@ -13,7 +13,7 @@ class Config(properties: Properties) {
         const val HPF_HELLO_BACKOFF_KEY = "hello_backoff"
         const val HPF_HELLO_BACKOFF_DEFAULT = "1000"
         const val HPF_JOIN_TIMEOUT_KEY = "join_timeout"
-        const val HPF_JOIN_TIMEOUT_DEFAULT = "2000"
+        const val HPF_JOIN_TIMEOUT_DEFAULT = "1000"
         const val HPF_K_ACTIVE_KEY = "k_active"
         const val HPF_K_ACTIVE_DEFAULT = "3"
         const val HPF_K_PASSIVE_KEY = "k_passive"
@@ -27,7 +27,6 @@ class Config(properties: Properties) {
         const val MAN_BROADCAST_INTERVAL_KEY = "broadcast_interval"
         const val MAN_BROADCAST_INTERVAL_DEFAULT = "2000"
         const val DATACENTER_KEY = "datacenter"
-        const val CONTACT_NODE_KEY = "contact_node"
         const val REGION_KEY = "region"
         const val LOCATION_X_KEY = "location_x"
         const val LOCATION_Y_KEY = "location_y"
@@ -88,7 +87,6 @@ class Config(properties: Properties) {
 
     val man_broadcast_interval: Long
     val datacenter: String
-    val contact_node: String
     val region: String
     val tree_builder: String
     val tree_builder_interval: Long
@@ -131,7 +129,6 @@ class Config(properties: Properties) {
         man_broadcast_interval =
             properties.getProperty(MAN_BROADCAST_INTERVAL_KEY, MAN_BROADCAST_INTERVAL_DEFAULT).toLong()
         datacenter = properties.getProperty(DATACENTER_KEY)
-        contact_node = properties.getProperty(CONTACT_NODE_KEY, datacenter)
         region = properties.getProperty(REGION_KEY)
         locationX = properties.getProperty(LOCATION_X_KEY).toDouble()
         locationY = properties.getProperty(LOCATION_Y_KEY).toDouble()
