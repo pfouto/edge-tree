@@ -324,6 +324,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         msg.writes.forEach { (id, write) ->
             val localPersistenceId = persistenceIdCounter++
             val newId = WriteID(id.ip, id.counter, localPersistenceId)
+            transformed.add(Pair(newId, write))
 
             logger.debug("Received upstream write for {} from {}", write.objectIdentifier, child)
             sendReply(PropagateWriteReply(newId, write, false), Storage.ID)
@@ -331,7 +332,6 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             childState.highestPersistenceIdSeen = id.persistenceId
             if (state !is Datacenter) {
                 childState.persistenceMapper[localPersistenceId] = id.persistenceId
-                transformed.add(Pair(newId, write))
             }
         }
 
@@ -339,6 +339,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             is ParentSync, is ParentConnecting, is ParentConnected -> pendingParentRemoteWrites.addAll(transformed)
             is ParentReady -> sendMessage(UpstreamWrite(transformed), parentState.parent, TCPChannel.CONNECTION_OUT)
         }
+        propagateWritesToChildren(transformed, except = child)
     }
 
     override fun onPropagateLocalWrite(req: PropagateWriteRequest) {
@@ -363,10 +364,12 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         propagateWritesToChildren(listOf(Pair(writeID, req.write)))
     }
 
-    private fun propagateWritesToChildren(writes: List<Pair<WriteID, RemoteWrite>>) {
+    private fun propagateWritesToChildren(writes: List<Pair<WriteID, RemoteWrite>>, except: Host? = null) {
         writes.forEach {
             val writePartition = it.second.objectIdentifier.partition
-            children.forEach { (c, state) ->
+            for ((c, state) in children) {
+                if (c == except)
+                    continue
                 when (state) {
                     is ChildSync -> {
                         if (state.objects.containsObject(it.second.objectIdentifier))

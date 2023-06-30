@@ -120,7 +120,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
             sendRequest(InitRequest(null), HyParFlood.ID)
         } else {
             logger.warn("Starting asleep")
-            sendRequest(InitRequest(Inet4Address.getByName(regionalDatacenter) as Inet4Address), HyParFlood.ID)
+            sendRequest(InitRequest(Inet4Address.getByName(config.contact_node) as Inet4Address), HyParFlood.ID)
         }
         logger.debug("Bind address {}", selfAddress)
 
