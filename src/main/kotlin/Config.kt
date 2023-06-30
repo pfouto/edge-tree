@@ -44,7 +44,7 @@ class Config(properties: Properties) {
         const val TREE_RECONNECT_TIMEOUT_KEY = "reconnect_timeout"
         const val TREE_RECONNECT_TIMEOUT_DEFAULT = "3000"
         const val TREE_PROPAGATE_TIMEOUT_KEY = "propagate_timeout"
-        const val TREE_PROPAGATE_TIMEOUT_DEFAULT = "2000"
+        const val TREE_PROPAGATE_TIMEOUT_DEFAULT = "50"
 
         // Storage
         const val DC_STORAGE_TYPE_KEY = "dc_storage_type"
