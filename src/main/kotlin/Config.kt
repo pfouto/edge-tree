@@ -13,7 +13,7 @@ class Config(properties: Properties) {
         const val HPF_HELLO_BACKOFF_KEY = "hello_backoff"
         const val HPF_HELLO_BACKOFF_DEFAULT = "1000"
         const val HPF_JOIN_TIMEOUT_KEY = "join_timeout"
-        const val HPF_JOIN_TIMEOUT_DEFAULT = "1000"
+        const val HPF_JOIN_TIMEOUT_DEFAULT = "3000"
         const val HPF_K_ACTIVE_KEY = "k_active"
         const val HPF_K_ACTIVE_DEFAULT = "3"
         const val HPF_K_PASSIVE_KEY = "k_passive"

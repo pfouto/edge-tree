@@ -139,14 +139,14 @@ class HyParFlood(address: Inet4Address, config: Config) : GenericProtocol(NAME, 
         if (request.address != null) {
             val contactHost = Host(request.address, PORT)
             logger.info("Initializing, contact: $contactHost")
-            openConnection(contactHost)
-            val m = JoinMessage()
-            sendMessage(m, contactHost)
-            logger.debug("Sent JoinMessage to {}", contactHost)
-            logger.trace("Sent {} to {}", m, contactHost)
+            //openConnection(contactHost)
+            //val m = JoinMessage()
+            //sendMessage(m, contactHost)
+            //logger.debug("Sent JoinMessage to {}", contactHost)
+            //logger.trace("Sent {} to {}", m, contactHost)
 
             setupTimer(JoinTimeout(contactHost),
-                joinTimeout.toLong() + rnd.nextInt(joinTimeout.toInt()/2) - joinTimeout.toLong() / 4)
+                joinTimeout.toLong() + rnd.nextInt(joinTimeout.toInt()) - joinTimeout.toLong() / 2)
         } else
             logger.info("Initializing, no contact")
 

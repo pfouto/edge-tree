@@ -52,6 +52,9 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private var storageIdCounter = 0
 
+    private var gcObjectsSinceLastLog = 0
+    private var replicatedObjectsSinceLastLog = 0
+
     @Volatile
     private var localTime: HybridTimestamp = HybridTimestamp(getTimeMillis(), 0)
 
@@ -360,6 +363,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
             val callbacks = pendingObjects.remove(it.objectIdentifier)!!
 
+            replicatedObjectsSinceLastLog++
             //Client reads
             for (id in callbacks.reads) {
                 logger.debug("Sending read reply to {}", id)
@@ -489,11 +493,14 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             logger.debug("Garbage collected objects: $removedObjects")
             logger.debug("Garbage collected partitions: $removedPartitions")
         }
+        gcObjectsSinceLastLog += removedObjects.size
         sendRequest(RemoveReplicasRequest(removedObjects, removedPartitions), TreeProto.ID)
     }
 
     private fun onLogNObjects() {
-        logger.info("nobjects: ${dataIndex.nObjects()}")
+        logger.info("nobjects: ${dataIndex.nObjects()} ${replicatedObjectsSinceLastLog} ${gcObjectsSinceLastLog}")
+        gcObjectsSinceLastLog = 0
+        replicatedObjectsSinceLastLog = 0
     }
 
     /**

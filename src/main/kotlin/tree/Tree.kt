@@ -575,8 +575,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             //Came from a different branch
             val myState = state as Node
             if (myState is ParentReady &&
-                getClosestParentTimestamp(req.migration.path, myState)
-                    .isAfterOrEqual(req.migration.hlc)
+                getClosestParentTimestamp(req.migration.path, myState).isAfterOrEqual(req.migration.hlc)
             ) {
                 logger.debug("Mig ${req.storageId} responding immediately")
                 sendReply(MigrationReply(req.storageId), Storage.ID)
@@ -592,7 +591,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         //Must always return something (since at the very least the root is shared)
         if (clientPath.contains(myState.parent))
             return myState.metadata[0].timestamp
-        for (i in 1 until myState.grandparents.size) {
+        for (i in 0 until myState.grandparents.size) {
             if (clientPath.contains(myState.grandparents[i]))
                 return myState.metadata[i + 1].timestamp
         }
