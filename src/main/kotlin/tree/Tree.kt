@@ -133,9 +133,10 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         assertOrExit(parent == oldState.parent, "Parent mismatch")
         state = ParentReady(parent, emptyList(), emptyList())
 
-        //SyncApply also triggers requests for pending data and pending persistence
+        //SyncApply also triggers requests for pending data
         sendRequest(SyncApply(msg.items), Storage.ID)
 
+        //OnReconfiguration triggers requests for pending persistence
         onReconfiguration(parent, msg.reconfiguration)
 
         sendMessage(UpstreamWrite(pendingParentRemoteWrites.toList()), parent, TCPChannel.CONNECTION_OUT)
