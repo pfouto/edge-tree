@@ -16,5 +16,5 @@ resorting to the Tree to request data objects from other nodes when needed.
 - **proxy.ClientProxy.kt**: The client proxy is simply the interface for client to interact with the system. It
 maintains a list of clients, and forwards requests to the Storage protocol.
 
-The client logic for Arboreal can be found in https://gihub.com/pfouto/edge-client, while the scripts to run the
+The client logic for Arboreal can be found in https://github.com/pfouto/edge-client, while the scripts to run the
 experiments in the paper, along with simple instructions to run Arboreal, can be found in https://github.com/pfouto/edge-exps.
