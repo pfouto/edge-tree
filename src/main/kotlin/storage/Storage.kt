@@ -15,7 +15,6 @@ import pt.unl.fct.di.novasys.network.data.Host
 import storage.utils.DataIndex
 import storage.utils.GarbageCollectTimer
 import storage.utils.LogNObjectsTimer
-import storage.wrappers.CassandraWrapper
 import storage.wrappers.InMemoryWrapper
 import tree.TreeProto
 import tree.utils.ChildReady
@@ -31,7 +30,6 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         const val NAME = "Storage"
         const val ID: Short = 500
 
-        const val CASSANDRA_TYPE = "cassandra"
         const val IN_MEMORY_TYPE = "in_memory"
 
         private val logger = LogManager.getLogger()
@@ -135,7 +133,6 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
         storageWrapper = if (amDc) //datacenter
             when (config.dc_storage_type) {
-                CASSANDRA_TYPE -> CassandraWrapper()
                 IN_MEMORY_TYPE -> InMemoryWrapper()
                 else -> {
                     logger.error("Invalid storage type: ${config.dc_storage_type}")
@@ -144,7 +141,6 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             }
         else { // node
             when (config.node_storage_type) {
-                CASSANDRA_TYPE -> CassandraWrapper()
                 IN_MEMORY_TYPE -> InMemoryWrapper()
                 else -> {
                     logger.error("Invalid storage type: ${config.node_storage_type}")
