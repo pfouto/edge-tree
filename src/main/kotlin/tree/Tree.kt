@@ -16,7 +16,6 @@ import java.net.Inet4Address
 import java.nio.ByteBuffer
 import java.util.*
 import java.util.function.Supplier
-import kotlin.math.log
 import kotlin.system.exitProcess
 
 class Tree(address: Inet4Address, config: Config, private val timestampReader: Supplier<HybridTimestamp>) :
@@ -271,7 +270,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         assertOrExit(some is ParentSync || some is ParentReady, "Connection lost while not connected  $some")
         assertOrExit(host == some.parent, "Parent mismatch")
 
-        logger.warn("Connection lost to parent $host, reconnecting")
+        logger.warn("Connection lost to parent $host, reconnecting: $cause")
         state = ParentConnecting(some.parent, some.grandparents)
         openConnection(some.parent)
     }
@@ -422,7 +421,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         logger.debug("CHILD-METADATA {} {}", child, msg.ts)
     }
 
-    override fun onChildDisconnected(child: Host) {
+    override fun onChildDisconnected(child: Host, cause: Throwable) {
         val remove = children.remove(child)!!
         if (remove is ChildReady) {
             sendRequest(RemovedChildRequest(child), Storage.ID)
@@ -431,7 +430,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             }
         }
         updateStableTs()
-        logger.info("CHILD DISCONNECTED $child")
+        logger.info("CHILD DISCONNECTED $child $cause")
     }
 
     private fun updateStableTs() {

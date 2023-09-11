@@ -44,7 +44,7 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
         channelProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "false")
         channelProps.setProperty(TCPChannel.CONNECT_TIMEOUT_KEY, "5000")
         channelProps.setProperty(TCPChannel.HEARTBEAT_INTERVAL_KEY, "5000")
-        channelProps.setProperty(TCPChannel.HEARTBEAT_TOLERANCE_KEY, "20000")
+        channelProps.setProperty(TCPChannel.HEARTBEAT_TOLERANCE_KEY, "50000")
         channel = createChannel(TCPChannel.NAME, channelProps)
 
         registerChannelEventHandler(channel, OutConnectionUp.EVENT_ID)
@@ -60,7 +60,7 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
         { event: InConnectionUp, _: Int -> onChildConnected(event.node) }
 
         registerChannelEventHandler(channel, InConnectionDown.EVENT_ID)
-        { event: InConnectionDown, _: Int -> onChildDisconnected(event.node) }
+        { event: InConnectionDown, _: Int -> onChildDisconnected(event.node, event.cause) }
 
         registerMessageSerializer(channel, SyncRequest.ID, SyncRequest.Serializer)
         registerMessageSerializer(channel, SyncResponse.ID, SyncResponse.Serializer)
@@ -188,7 +188,7 @@ abstract class TreeProto(val address: Inet4Address, config: Config) : GenericPro
     abstract fun parentConnectionLost(host: Host, cause: Throwable?)
     abstract fun parentConnectionFailed(host: Host, cause: Throwable?)
     abstract fun onChildConnected(child: Host)
-    abstract fun onChildDisconnected(child: Host)
+    abstract fun onChildDisconnected(child: Host, cause: Throwable)
     abstract fun onMessageFailed(msg: ProtoMessage, to: Host, cause: Throwable)
 
     //Messaging from parent

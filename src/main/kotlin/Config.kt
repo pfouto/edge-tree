@@ -39,6 +39,8 @@ class Config(properties: Properties) {
         const val TREE_BUILDER_LOCATION_DELAY_KEY = "tree_builder_location_delay"
         const val TREE_BUILDER_LOCATION_DELAY_DEFAULT = "20000"
         const val TREE_BUILDER_NNODES_KEY = "tree_builder_nnodes"
+        const val TREE_BUILDER_LOCATION_SUB_KEY = "tree_builder_location_sub"
+        const val TREE_BUILDER_LOCATION_SUB_DEFAULT = "deep"
 
         //Tree
         const val TREE_RECONNECT_TIMEOUT_KEY = "reconnect_timeout"
@@ -93,6 +95,7 @@ class Config(properties: Properties) {
     val tree_build_static_location: String
     val tree_builder_location_delay: Long
     val tree_builder_nnodes: Int
+    val tree_builder_location_sub: String
 
 
     val tree_reconnect_timeout: Long
@@ -146,6 +149,9 @@ class Config(properties: Properties) {
             properties.getProperty(TREE_RECONNECT_TIMEOUT_KEY, TREE_RECONNECT_TIMEOUT_DEFAULT).toLong()
         tree_propagate_timeout =
             properties.getProperty(TREE_PROPAGATE_TIMEOUT_KEY, TREE_PROPAGATE_TIMEOUT_DEFAULT).toLong()
+
+        tree_builder_location_sub =
+            properties.getProperty(TREE_BUILDER_LOCATION_SUB_KEY, TREE_BUILDER_LOCATION_SUB_DEFAULT)
 
         dc_storage_type = properties.getProperty(DC_STORAGE_TYPE_KEY, DC_STORAGE_TYPE_DEFAULT)
         node_storage_type = properties.getProperty(NODE_STORAGE_TYPE_KEY, NODE_STORAGE_TYPE_DEFAULT)

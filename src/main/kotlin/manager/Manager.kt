@@ -42,6 +42,21 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
         Static,  //Parent wakes up a child node from a static tree
         Location //Child connects to best parent based on location after parent wakes up
     }
+    enum class LocationSub(val orderingFunc: ( BroadcastState, Location) -> Double) {
+        centralized ({ state, _ -> state.location.distanceToCenter()}),
+        deep({state, myLoc ->
+            if (state.location.distanceToCenter() > myLoc.distanceToCenter())
+                (0.75 * state.location.distanceToCenter() + state.location.distanceTo(myLoc))*10.0
+            else
+                0.75 * state.location.distanceToCenter() + state.location.distanceTo(myLoc)
+        }),
+        wide({state, myLoc ->
+            if (state.location.distanceToCenter() > myLoc.distanceToCenter())
+                (0.25 * state.location.distanceToCenter() + state.location.distanceTo(myLoc))*10.0
+            else
+                0.25 * state.location.distanceToCenter() + state.location.distanceTo(myLoc)
+        })
+    }
 
     private var state: State = State.INACTIVE
         private set(value) {
@@ -66,6 +81,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
     private val treeBuilder: TreeBuilder
     private val staticTree: Map<String, List<String>>?
     private var treeBuilderTimer = -1L
+    private val locationSub: LocationSub
 
     var startTime: Long = Long.MAX_VALUE
 
@@ -107,6 +123,8 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
             Yaml.default.decodeFromStream<Map<String, List<String>>>(FileInputStream(config.tree_build_static_location))
         else
             null
+
+        locationSub = LocationSub.valueOf(config.tree_builder_location_sub)
 
         membership = mutableMapOf()
 
@@ -197,9 +215,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
                 }
                 val best =
                     membership.filterValues { it.first.location.distanceToCenter() < myLocation.distanceToCenter() }
-                        .toList().minByOrNull { (_, value) ->
-                            0.75 * value.first.location.distanceToCenter() + value.first.location.distanceTo(myLocation)
-                        }
+                        .toList().minByOrNull { (_, value) -> locationSub.orderingFunc(value.first, myLocation) }
                 if(best != null){
                     if (best.second.first.state == State.ACTIVE) {
                         logger.info("Waking myself. Connecting to ${best.first}, membership size ${membership.size}")
