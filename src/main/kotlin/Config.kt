@@ -64,6 +64,10 @@ class Config(properties: Properties) {
         const val HOSTNAME_KEY = "hostname"
         const val IP_ADDR_KEY = "address"
 
+        //Engage
+        const val ENG_PARTITIONS_KEY = "eng_partitions"
+        const val ENG_PARTITIONS_DEFAULT = ""
+
 
         /*const val HPF_PORT_KEY = "hpf_port"
         const val HPF_PORT_DEFAULT = "2000"
@@ -113,6 +117,8 @@ class Config(properties: Properties) {
     val locationX: Double
     val locationY: Double
 
+    val engPartitions: String
+
     /*val hpf_port: Int
     val man_port: Int
     val tree_port: Int
@@ -161,6 +167,8 @@ class Config(properties: Properties) {
 
         hostname = properties.getProperty(HOSTNAME_KEY)
         ip_addr = properties.getProperty(IP_ADDR_KEY)
+
+        engPartitions = properties.getProperty(ENG_PARTITIONS_KEY, ENG_PARTITIONS_DEFAULT)
 
         /*hpf_port = properties.getProperty(HPF_PORT_KEY, HPF_PORT_DEFAULT).toInt()
         man_port = properties.getProperty(MAN_PORT_KEY, MAN_PORT_DEFAULT).toInt()
