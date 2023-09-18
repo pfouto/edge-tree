@@ -51,6 +51,8 @@ class EngageStorage(val address: Inet4Address, private val config: Config) : Gen
 
         registerReplyHandler(MigrationReply.ID) { rep: MigrationReply, _ -> onMigrationReply(rep) }
 
+        registerReplyHandler(MigrationReply.ID) { rep: MFReply, _ -> onMetadataFlush(rep) }
+
         registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> propagateTime() }
 
         //TODO check if I am VC! (from onactivate notification)
@@ -71,6 +73,10 @@ class EngageStorage(val address: Inet4Address, private val config: Config) : Gen
         //TODO send notification with VC to Engage
         //TODO only if I am DC
     }
+
+    //TODO upon receiving VC from upstream
+
+
 
 
     private fun onDeactivate() {

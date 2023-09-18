@@ -1,5 +1,7 @@
 package ipc
 
+import engage.messaging.MetadataFlush
+import engage.messaging.UpdateNot
 import proxy.utils.MigrationOperation
 import pt.unl.fct.di.novasys.babel.generic.ProtoReply
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
@@ -171,5 +173,25 @@ data class PropagateWriteRequest(val storageId: Int, val write: RemoteWrite, val
 data class PersistenceUpdate(val persistenceMap: Map<Int, Int>) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 211
+    }
+}
+
+//Engage
+
+data class MFReply(val mf: MetadataFlush): ProtoReply(ID) {
+    companion object {
+        const val ID: Short = 223
+    }
+}
+
+data class UpdateNotReply(val update: UpdateNot): ProtoReply(ID) {
+    companion object {
+        const val ID: Short = 224
+    }
+}
+
+data class UpdateNotRequest(val update: UpdateNot): ProtoRequest(ID) {
+    companion object {
+        const val ID: Short = 225
     }
 }

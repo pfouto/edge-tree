@@ -3,23 +3,22 @@ package engage
 import Config
 import engage.messaging.*
 import engage.timers.*
-import ipc.ActivateNotification
+import ipc.*
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
-import tree.Tree
-import tree.TreeProto
-import tree.utils.Datacenter
-import tree.utils.Inactive
 import java.net.Inet4Address
-import java.net.InetAddress
 import java.util.*
 import kotlin.streams.toList
 
 const val DEFAULT_PEER_PORT = 1600
+
+//TODO receive VC from storage and propagate downstream
+//TODO receive VC from upstream and send to storage
+
 
 class Engage(val address: Inet4Address, props: Properties, private val config: Config) :
     GenericProtocol("Engage", 100) {
@@ -88,6 +87,7 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         registerMessageHandler(peerChannel, UpdateNot.MSG_ID, this::onPeerUpdateNot, this::onMessageFailed)
         registerMessageHandler(peerChannel, MetadataFlush.MSG_ID, this::onPeerMetadataFlush, this::onMessageFailed)
 
+        registerRequestHandler(UpdateNotRequest.ID) { req: UpdateNotRequest, _ -> onClientUpdateNot(req) }
 
         registerTimerHandler(ReconnectTimer.TIMER_ID, this::onReconnectTimer)
         registerTimerHandler(GossipTimer.TIMER_ID, this::onGossipTimer)
@@ -196,11 +196,10 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         }
     }
 
-    //TODO change this with request/reply from EngageStorage
-    private fun onClientUpdateNot(msg: UpdateNot, from: Host, sourceProto: Short, channelId: Int) {
+    private fun onClientUpdateNot(req: UpdateNotRequest) {
         if (logger.isDebugEnabled)
-            logger.debug("Received $msg from client")
-        propagateUN(msg, null)
+            logger.debug("Received ${req.update} from client")
+        propagateUN(req.update, null)
     }
 
     private fun onPeerUpdateNot(msg: UpdateNot, from: Host, sourceProto: Short, channelId: Int) {
@@ -209,15 +208,12 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         if (!neighbours.containsKey(from)) throw AssertionError("Msg from unknown neigh $from")
         propagateUN(msg, from)
 
-        //TODO change this with request/reply to EngageStorage
-        if (serverChannel != null) {
-            if (msg.part == "migration" || partitions.contains(msg.part)) {
-                sendMessage(serverChannel, msg, localClient!!)
-            } else if (mfEnabled) {
-                val single = MetadataFlush.single(msg.source, msg.vUp)
-                if (msg.mf != null) single.merge(msg.mf)
-                sendMessage(serverChannel, single, localClient!!)
-            }
+        if (msg.part == "migration" || partitions.contains(msg.part)) {
+            sendReply(UpdateNotReply(msg), EngageStorage.ID)
+        } else if (mfEnabled) {
+            val single = MetadataFlush.single(msg.source, msg.vUp)
+            if (msg.mf != null) single.merge(msg.mf)
+            sendReply(MFReply(single), EngageStorage.ID)
         }
     }
 
@@ -242,9 +238,7 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
                 sendMessage(peerChannel, toSend, neigh)
             }
         }
-        //TODO change this with request/reply to EngageStorage
-        if (serverChannel != null)
-            sendMessage(serverChannel, msg, localClient!!)
+        sendReply(MFReply(msg), EngageStorage.ID)
     }
 
     private fun onMessageFailed(msg: ProtoMessage, to: Host, destProto: Short, cause: Throwable, channelId: Int) {
@@ -280,7 +274,7 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         if (logger.isDebugEnabled)
             logger.debug("Connection in up from ${event.node}")
 
-        if(!neighbours.containsKey(event.node)){
+        if (!neighbours.containsKey(event.node)) {
             logger.info("Adding neighbor that connected to me ${event.node}")
             neighbours[event.node] = NeighState()
             setupTimer(ReconnectTimer(event.node), 500)
