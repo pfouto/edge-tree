@@ -3,12 +3,17 @@ package engage
 import Config
 import engage.messaging.*
 import engage.timers.*
+import ipc.ActivateNotification
 import org.apache.logging.log4j.LogManager
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.channel.tcp.TCPChannel
 import pt.unl.fct.di.novasys.channel.tcp.events.*
 import pt.unl.fct.di.novasys.network.data.Host
+import tree.Tree
+import tree.TreeProto
+import tree.utils.Datacenter
+import tree.utils.Inactive
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.util.*
@@ -16,11 +21,12 @@ import kotlin.streams.toList
 
 const val DEFAULT_PEER_PORT = 1600
 
-class Engage(val address: Inet4Address, props: Properties, private val config: Config) : GenericProtocol("Engage", 100) {
+class Engage(val address: Inet4Address, props: Properties, private val config: Config) :
+    GenericProtocol("Engage", 100) {
 
     private val logger = LogManager.getLogger()
 
-    val self: Host
+    private val self: Host
 
     private val peerChannel: Int
 
@@ -32,15 +38,24 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
 
 
     private val partitions: List<String> = config.engPartitions.split(",")
-    private val neighbours: Map<Host, NeighState>
+    private val neighbours: MutableMap<Host, NeighState>
 
 
     private var nUpdateNotMessages: Int
     private var nMetadataFlushMessages: Int
 
+    private var active: Boolean
+    private var amDc: Boolean
+
     init {
-        mfEnabled = props.getProperty("mf_enabled").toBoolean()
-        mfTimeoutMs = props.getProperty("mf_timeout_ms").toLong()
+
+        subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
+
+        active = false
+        amDc = false
+
+        mfEnabled = props.getProperty("mf_enabled", "true").toBoolean()
+        mfTimeoutMs = props.getProperty("mf_timeout_ms", "1000").toLong()
 
         nUpdateNotMessages = 0
         nMetadataFlushMessages = 0
@@ -56,10 +71,6 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         peerChannel = createChannel(TCPChannel.NAME, peerProps)
 
         neighbours = mutableMapOf()
-        for (link in links) {
-            val addr = InetAddress.getByName(link) ?: throw AssertionError("Could not read neighbour $link")
-            neighbours[Host(addr, DEFAULT_PEER_PORT)] = NeighState()
-        }
     }
 
     override fun init(props: Properties?) {
@@ -82,15 +93,33 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         registerTimerHandler(GossipTimer.TIMER_ID, this::onGossipTimer)
         registerTimerHandler(FlushTimer.TIMER_ID, this::onFlushTimer)
 
-        neighbours.keys.forEach {
-            setupTimer(ReconnectTimer(it), 1500)
-        }
-
         setupPeriodicTimer(GossipTimer(), 1500 + gossipInterval, gossipInterval)
 
-        logger.info("Engage started, me $self, mf ${if (mfEnabled) "YES" else "NO"}" +
-                "${if (mfEnabled) ", mfTo $mfTimeoutMs" else ""}, neighs: " +
-                "${neighbours.keys.stream().map { s -> s.address.hostAddress.substring(10) }.toList()}")
+        logger.info(
+            "Engage started, me $self, mf ${if (mfEnabled) "YES" else "NO"}" +
+                    "${if (mfEnabled) ", mfTo $mfTimeoutMs" else ""}, neighs: " +
+                    "${neighbours.keys.stream().map { s -> s.address.hostAddress.substring(10) }.toList()}"
+        )
+    }
+
+    private fun onActivate(notification: ActivateNotification) {
+        logger.info("$notification received")
+        if (active) {
+            logger.warn("Already active, ignoring")
+            return
+        }
+        active = true
+
+        if (notification.contact != null) {
+            val contact = notification.contact!!
+            val host = Host(contact, DEFAULT_PEER_PORT)
+            logger.info("Starting and adding neighbor contact $host")
+            neighbours[host] = NeighState()
+            setupTimer(ReconnectTimer(host), 500)
+        } else {
+            amDc = true
+            logger.info("Am datacenter")
+        }
     }
 
     private fun onGossipTimer(timer: GossipTimer, uId: Long) {
@@ -130,7 +159,7 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         }
     }
 
-    private fun propagateUN(msg: UpdateNot, sourceEdge: Host?) {<
+    private fun propagateUN(msg: UpdateNot, sourceEdge: Host?) {
         neighbours.forEach { (neigh, nState) ->
             if (neigh != sourceEdge) {
                 if (msg.part == "migration" || nState.partitions.containsKey(msg.part)) {
@@ -144,7 +173,7 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
                     nUpdateNotMessages++
                     sendMessage(peerChannel, toSend, neigh)
                 } else if (mfEnabled) {
-                    if(mfTimeoutMs > 0) {
+                    if (mfTimeoutMs > 0) {
                         //Either merge msg to mf, or store and create timer
                         if (nState.pendingMF != null) {
                             if (msg.mf != null)
@@ -160,13 +189,14 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
                         val mf = MetadataFlush.single(msg.source, msg.vUp)
                         if (msg.mf != null) mf.merge(msg.mf)
                         nMetadataFlushMessages++
-                        sendMessage(peerChannel,  mf, neigh)
+                        sendMessage(peerChannel, mf, neigh)
                     }
                 }
             }
         }
     }
 
+    //TODO change this with request/reply from EngageStorage
     private fun onClientUpdateNot(msg: UpdateNot, from: Host, sourceProto: Short, channelId: Int) {
         if (logger.isDebugEnabled)
             logger.debug("Received $msg from client")
@@ -179,6 +209,7 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         if (!neighbours.containsKey(from)) throw AssertionError("Msg from unknown neigh $from")
         propagateUN(msg, from)
 
+        //TODO change this with request/reply to EngageStorage
         if (serverChannel != null) {
             if (msg.part == "migration" || partitions.contains(msg.part)) {
                 sendMessage(serverChannel, msg, localClient!!)
@@ -211,6 +242,7 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
                 sendMessage(peerChannel, toSend, neigh)
             }
         }
+        //TODO change this with request/reply to EngageStorage
         if (serverChannel != null)
             sendMessage(serverChannel, msg, localClient!!)
     }
@@ -247,6 +279,12 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
     private fun onInConnectionUp(event: InConnectionUp, channelId: Int) {
         if (logger.isDebugEnabled)
             logger.debug("Connection in up from ${event.node}")
+
+        if(!neighbours.containsKey(event.node)){
+            logger.info("Adding neighbor that connected to me ${event.node}")
+            neighbours[event.node] = NeighState()
+            setupTimer(ReconnectTimer(event.node), 500)
+        }
     }
 
     private fun onInConnectionDown(event: InConnectionDown, channelId: Int) {
@@ -255,8 +293,10 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
     }
 
     fun finalLogs() {
-        logger.info("Number of message: {} {} {}",
-            nUpdateNotMessages+nMetadataFlushMessages, nUpdateNotMessages, nMetadataFlushMessages)
+        logger.info(
+            "Number of message: {} {} {}",
+            nUpdateNotMessages + nMetadataFlushMessages, nUpdateNotMessages, nMetadataFlushMessages
+        )
     }
 
     data class NeighState(
