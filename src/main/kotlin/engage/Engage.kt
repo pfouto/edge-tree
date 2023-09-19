@@ -16,10 +16,6 @@ import kotlin.streams.toList
 
 const val DEFAULT_PEER_PORT = 1600
 
-//TODO receive VC from storage and propagate downstream
-//TODO receive VC from upstream and send to storage
-
-
 class Engage(val address: Inet4Address, props: Properties, private val config: Config) :
     GenericProtocol("Engage", 100) {
 

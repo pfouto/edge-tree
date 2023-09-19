@@ -3,14 +3,17 @@ package engage
 import Config
 import ipc.*
 import org.apache.logging.log4j.LogManager
+import proxy.utils.ReadOperation
+import proxy.utils.WriteOperation
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
-import storage.StorageWrapper
-import storage.utils.DataIndex
-import tree.utils.PropagateTimer
 import java.net.Inet4Address
 import java.util.*
 
 //TODO take logic from engage-cassandra
+
+//TODO periodically compute ops per second (or on shutdown?)
+//This probably should start when the first write is received and stop when the last write is received
+
 
 class EngageStorage(val address: Inet4Address, private val config: Config) : GenericProtocol(NAME, ID) {
     companion object {
@@ -22,9 +25,7 @@ class EngageStorage(val address: Inet4Address, private val config: Config) : Gen
 
     private val lww: Int = address.hashCode()
 
-    private lateinit var storageWrapper: StorageWrapper
-
-    private lateinit var dataIndex: DataIndex
+    private val storageWrapper: EngageInMemoryWrapper
 
     private val localTimeLock = Object()
 
@@ -47,18 +48,8 @@ class EngageStorage(val address: Inet4Address, private val config: Config) : Gen
             onRemoteWrite(rep.writeId, rep.write, rep.downstream)
         }
 
-        registerReplyHandler(PersistenceUpdate.ID) { rep: PersistenceUpdate, _ -> onPersistence(rep) }
-
-        registerReplyHandler(MigrationReply.ID) { rep: MigrationReply, _ -> onMigrationReply(rep) }
-
-        registerReplyHandler(MigrationReply.ID) { rep: MFReply, _ -> onMetadataFlush(rep) }
-
-        registerTimerHandler(PropagateTimer.ID) { _: PropagateTimer, _ -> propagateTime() }
-
-        //TODO check if I am VC! (from onactivate notification)
-        setupPeriodicTimer(PropagateTimer(), propagateTimeout, propagateTimeout)
-
-
+        storageWrapper = EngageInMemoryWrapper()
+        storageWrapper.initialize()
     }
 
     override fun init(props: Properties) {
@@ -69,21 +60,24 @@ class EngageStorage(val address: Inet4Address, private val config: Config) : Gen
 
     }
 
-    fun propagateTime() {
-        //TODO send notification with VC to Engage
-        //TODO only if I am DC
+    private fun onLocalOpRequest(req: OpRequest) {
+        when (req.op) {
+            is WriteOperation -> {
+                val objId = ObjectIdentifier(req.op.partition, req.op.key)
+                //TODO change object metadata to receive object instead of timestamp
+                //or just use a different class instead of object data
+                //val objData = ObjectData(req.op.value, ObjectMetadata(Clock(), lww))
+            }
+
+            is ReadOperation -> {
+
+            }
+        }
     }
-
-    //TODO upon receiving VC from upstream
-
-
-
 
     private fun onDeactivate() {
         logger.info("Storage Deactivating (cleaning data)")
-        dataIndex.clear()
         storageWrapper.cleanUp()
     }
-
 
 }
