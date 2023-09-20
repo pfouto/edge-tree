@@ -1,3 +1,6 @@
+import engage.Engage
+import engage.EngageClientProxy
+import engage.EngageStorage
 import hyparflood.HyParFlood
 import manager.Manager
 import org.apache.logging.log4j.LogManager
@@ -33,24 +36,43 @@ fun main(args: Array<String>) {
 
         val babel = Babel.getInstance()
 
-        val storage = Storage(me, config)
-        val treeProto = Tree(me, config, storage::getTimestamp)
-        val hyParFlood = HyParFlood(me, config)
-        val manager = Manager(me, config)
-        val clientProxy = ClientProxy(me, config)
+        if(!config.engage) {
+            val storage = Storage(me, config)
+            val treeProto = Tree(me, config, storage::getTimestamp)
+            val hyParFlood = HyParFlood(me, config)
+            val manager = Manager(me, config)
+            val clientProxy = ClientProxy(me, config)
 
-        babel.registerProtocol(treeProto)
-        babel.registerProtocol(hyParFlood)
-        babel.registerProtocol(manager)
-        babel.registerProtocol(storage)
-        babel.registerProtocol(clientProxy)
+            babel.registerProtocol(treeProto)
+            babel.registerProtocol(hyParFlood)
+            babel.registerProtocol(manager)
+            babel.registerProtocol(storage)
+            babel.registerProtocol(clientProxy)
 
-        treeProto.init(properties)
-        hyParFlood.init(properties)
-        manager.init(properties)
-        storage.init(properties)
-        clientProxy.init(properties)
+            treeProto.init(properties)
+            hyParFlood.init(properties)
+            manager.init(properties)
+            storage.init(properties)
+            clientProxy.init(properties)
+        } else {
+            val storage = EngageStorage(me, config)
+            val mainProto = Engage(me, properties, config)
+            val hyParFlood = HyParFlood(me, config)
+            val manager = Manager(me, config)
+            val clientProxy = EngageClientProxy(me, config)
 
+            babel.registerProtocol(mainProto)
+            babel.registerProtocol(hyParFlood)
+            babel.registerProtocol(manager)
+            babel.registerProtocol(storage)
+            babel.registerProtocol(clientProxy)
+
+            mainProto.init(properties)
+            hyParFlood.init(properties)
+            manager.init(properties)
+            storage.init(properties)
+            clientProxy.init(properties)
+        }
         babel.start()
 
         Runtime.getRuntime().addShutdownHook(Thread { logger.info("Goodbye") })

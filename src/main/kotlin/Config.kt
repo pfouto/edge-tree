@@ -64,7 +64,18 @@ class Config(properties: Properties) {
         const val HOSTNAME_KEY = "hostname"
         const val IP_ADDR_KEY = "address"
 
+        const val COUNT_OPS_KEY = "count_ops"
+        const val COUNT_OPS_DEFAULT = "false"
+
+        const val COUNT_OPS_START_KEY = "count_ops_start"
+        const val COUNT_OPS_START_DEFAULT = "0"
+
+        const val COUNT_OPS_END_KEY = "count_ops_end"
+        const val COUNT_OPS_END_DEFAULT = "0"
+
         //Engage
+        const val ENGAGE_KEY = "engage"
+        const val ENGAGE_DEFAULT = "false"
         const val ENG_PARTITIONS_KEY = "eng_partitions"
         const val ENG_PARTITIONS_DEFAULT = ""
 
@@ -117,6 +128,11 @@ class Config(properties: Properties) {
     val locationX: Double
     val locationY: Double
 
+    val count_ops: Boolean
+    val count_ops_start: Long
+    val count_ops_end: Long
+
+    val engage: Boolean
     val engPartitions: String
 
     /*val hpf_port: Int
@@ -168,6 +184,11 @@ class Config(properties: Properties) {
         hostname = properties.getProperty(HOSTNAME_KEY)
         ip_addr = properties.getProperty(IP_ADDR_KEY)
 
+        count_ops = properties.getProperty(COUNT_OPS_KEY, COUNT_OPS_DEFAULT).toBoolean()
+        count_ops_start = properties.getProperty(COUNT_OPS_START_KEY, COUNT_OPS_START_DEFAULT).toLong()
+        count_ops_end = properties.getProperty(COUNT_OPS_END_KEY, COUNT_OPS_END_DEFAULT).toLong()
+
+        engage = properties.getProperty(ENGAGE_KEY, ENGAGE_DEFAULT).toBoolean()
         engPartitions = properties.getProperty(ENG_PARTITIONS_KEY, ENG_PARTITIONS_DEFAULT)
 
         /*hpf_port = properties.getProperty(HPF_PORT_KEY, HPF_PORT_DEFAULT).toInt()

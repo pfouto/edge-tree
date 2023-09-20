@@ -11,6 +11,7 @@ data class WriteOperation(
     val partition: String,
     val key: String,
     val value: ByteArray,
+    val clock: Clock
 ) : Operation(WRITE) {
 
     override fun equals(other: Any?): Boolean {
@@ -58,6 +59,7 @@ abstract class Operation(val type: Short) {
                     encodeUTF8(msg.key, out)
                     out.writeInt(msg.value.size)
                     out.writeBytes(msg.value)
+                    Clock.serializer.serialize(msg.clock, out)
                 }
             }
         }
@@ -76,7 +78,8 @@ abstract class Operation(val type: Short) {
                     val valueSize = buff.readInt()
                     val value = ByteArray(valueSize)
                     buff.readBytes(value)
-                    WriteOperation(partition, key, value)
+                    val clock = Clock.serializer.deserialize(buff)
+                    WriteOperation(partition, key, value, clock)
                 }
 
                 else -> throw IllegalArgumentException("Unknown operation type: $type")

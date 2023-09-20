@@ -4,7 +4,7 @@ import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.network.ISerializer
 import java.net.InetAddress
 
-class Clock (val value : Map<InetAddress, Int> = mapOf()) {
+class Clock (private val value : MutableMap<InetAddress, Int> = mutableMapOf()) {
 
     companion object {
         val serializer = object : ISerializer<Clock> {
@@ -36,5 +36,18 @@ class Clock (val value : Map<InetAddress, Int> = mapOf()) {
         return "Clock($value)"
     }
 
+    fun merge(other: Clock){
+        other.value.forEach { (k, v) ->
+            value.merge(k, v, ::maxOf)
+        }
+    }
+
+    fun merge(key: InetAddress, newValue: Int){
+        value.merge(key, newValue, ::maxOf)
+    }
+
+    fun getValue() : Map<InetAddress, Int>{
+        return value
+    }
 
 }

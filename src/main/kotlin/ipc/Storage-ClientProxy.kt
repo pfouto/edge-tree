@@ -38,7 +38,7 @@ class EngageOpReply(val proxyId: Long, val clock: Clock?, val data: ByteArray?) 
     }
 }
 
-data class EngageOpRequest(val proxyId: Long, val op: engage.Operation) : ProtoRequest(ID) {
+data class EngageOpRequest(val proxyId: Long, val op: engage.Operation, ) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 406
     }

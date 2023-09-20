@@ -5,7 +5,6 @@ import getTimeMillis
 import ipc.*
 import org.apache.logging.log4j.LogManager
 import proxy.ClientProxy
-import proxy.messaging.RequestMessage
 import proxy.utils.MigrationOperation
 import proxy.utils.PartitionFetchOperation
 import proxy.utils.ReadOperation
@@ -52,6 +51,11 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private var gcObjectsSinceLastLog = 0
     private var replicatedObjectsSinceLastLog = 0
+
+    private var nUpdates: Long = 0
+    private var printed: Boolean = false
+    private var zeroTime: Long = 0
+
 
     @Volatile
     private var localTime: HybridTimestamp = HybridTimestamp(getTimeMillis(), 0)
@@ -154,6 +158,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
 
         storageWrapper.initialize()
+
+        zeroTime = System.currentTimeMillis()
     }
 
     private fun onFetchMetadata(req: FetchMetadataReq) {
@@ -230,7 +236,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
                 // LWW will converge to the correct value
                 storageWrapper.put(objId, objData)
                 nOps.computeIfAbsent(req.op.partition) { Count() }.local++
-
+                countUpdates()
                 val remoteWrite = RemoteWrite(objId, objData)
 
                 sendReply(OpReply(req.proxyId, hlc, null), ClientProxy.ID)
@@ -444,6 +450,20 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         //We do not update the dataindex timestamp here, only on local writes/reads!
         nOps.computeIfAbsent(write.objectIdentifier.partition) { Count() }.remote++
         storageWrapper.put(write.objectIdentifier, write.objectData)
+        countUpdates()
+    }
+
+    private fun countUpdates(){
+        val now = System.currentTimeMillis() - zeroTime
+        if(amDc && config.count_ops && now > config.count_ops_start && !printed){
+            if(now > config.count_ops_end){
+                printed = true
+                logger.info("Total updates: $nUpdates from ${config.count_ops_start} to ${config.count_ops_end}")
+            } else {
+                nUpdates++
+            }
+        }
+
     }
 
     private fun onReconfiguration(req: ReconfigurationApply) {

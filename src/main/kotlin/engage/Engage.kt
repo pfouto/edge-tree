@@ -17,9 +17,14 @@ import kotlin.streams.toList
 const val DEFAULT_PEER_PORT = 1600
 
 class Engage(val address: Inet4Address, props: Properties, private val config: Config) :
-    GenericProtocol("Engage", 100) {
+    GenericProtocol(NAME, ID) {
 
-    private val logger = LogManager.getLogger()
+    companion object {
+        const val NAME = "Engage"
+        const val ID: Short = 200
+
+        private val logger = LogManager.getLogger()
+    }
 
     private val self: Host
 
@@ -202,7 +207,6 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         if (logger.isDebugEnabled)
             logger.debug("Received $msg from peer ${from.address.hostAddress}")
         if (!neighbours.containsKey(from)) throw AssertionError("Msg from unknown neigh $from")
-        propagateUN(msg, from)
 
         if (msg.part == "migration" || partitions.contains(msg.part)) {
             sendReply(UpdateNotReply(msg), EngageStorage.ID)
@@ -211,6 +215,9 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
             if (msg.mf != null) single.merge(msg.mf)
             sendReply(MFReply(single), EngageStorage.ID)
         }
+
+        propagateUN(msg, from)
+
     }
 
     private fun onPeerMetadataFlush(msg: MetadataFlush, from: Host, sourceProto: Short, channelId: Int) {
