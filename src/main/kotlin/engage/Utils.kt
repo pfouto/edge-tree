@@ -6,7 +6,7 @@ interface ImmutableInteger {
 }
 
 
-class MutableInteger(var value: Int = 0) : ImmutableInteger {
+class MutableInteger(private var value: Int = 0) : ImmutableInteger {
 
     override fun getValue(): Int {
         return value

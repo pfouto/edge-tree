@@ -1,9 +1,11 @@
 package engage.messaging
 
+import deserializeString
 import io.netty.buffer.ByteBuf
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage
 import pt.unl.fct.di.novasys.network.ISerializer
 import pt.unl.fct.di.novasys.network.data.Host
+import serializeString
 
 class GossipMessage(val parts: Map<String, Pair<Host, Int>>) : ProtoMessage(MSG_ID) {
 
@@ -15,7 +17,7 @@ class GossipMessage(val parts: Map<String, Pair<Host, Int>>) : ProtoMessage(MSG_
             override fun serialize(msg: GossipMessage, out: ByteBuf) {
                 out.writeInt(msg.parts.size)
                 msg.parts.forEach {
-                    utils.serializeString(it.key, out)
+                    serializeString(it.key, out)
                     Host.serializer.serialize(it.value.first, out)
                     out.writeInt(it.value.second)
                 }
@@ -25,7 +27,7 @@ class GossipMessage(val parts: Map<String, Pair<Host, Int>>) : ProtoMessage(MSG_
                 val nElements = input.readInt()
                 val map: MutableMap<String, Pair<Host, Int>> = mutableMapOf()
                 for (i in 0 until nElements) {
-                    val key = utils.deserializeString(input)
+                    val key = deserializeString(input)
                     val host = Host.serializer.deserialize(input)
                     val steps = input.readInt()
                     map[key] = Pair(host, steps)
