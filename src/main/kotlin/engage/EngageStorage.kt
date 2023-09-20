@@ -1,10 +1,10 @@
 package engage
 
 import Config
+import engage.messaging.MetadataFlush
+import engage.messaging.UpdateNot
 import ipc.*
 import org.apache.logging.log4j.LogManager
-import proxy.utils.ReadOperation
-import proxy.utils.WriteOperation
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol
 import java.net.Inet4Address
 import java.util.*
@@ -27,13 +27,9 @@ class EngageStorage(val address: Inet4Address, private val config: Config) : Gen
 
     private val storageWrapper: EngageInMemoryWrapper
 
-    private val localTimeLock = Object()
-
     private var storageIdCounter = 0
 
     private val proxyMapper = mutableMapOf<Int, Long>()
-
-    private val pendingPersistence = mutableMapOf<Int, MutableList<PropagateWriteRequest>>()
 
     private val propagateTimeout: Long
 
@@ -43,10 +39,10 @@ class EngageStorage(val address: Inet4Address, private val config: Config) : Gen
         subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
         subscribeNotification(ActivateNotification.ID) { not: ActivateNotification, _ -> onActivate(not) }
 
-        registerRequestHandler(OpRequest.ID) { req: OpRequest, _ -> onLocalOpRequest(req) }
-        registerReplyHandler(PropagateWriteReply.ID) { rep: PropagateWriteReply, _ ->
-            onRemoteWrite(rep.writeId, rep.write, rep.downstream)
-        }
+        registerRequestHandler(EngageOpRequest.ID) { req: EngageOpRequest, _ -> onLocalOpRequest(req) }
+
+        registerReplyHandler(UpdateNotReply.ID) { rep: UpdateNotReply, _ -> onRemoteUpdateNot(rep.update) }
+        registerReplyHandler(MFReply.ID) { rep: MFReply, _ -> onMetadataFlush(rep.mf) }
 
         storageWrapper = EngageInMemoryWrapper()
         storageWrapper.initialize()
@@ -60,7 +56,7 @@ class EngageStorage(val address: Inet4Address, private val config: Config) : Gen
 
     }
 
-    private fun onLocalOpRequest(req: OpRequest) {
+    private fun onLocalOpRequest(req: EngageOpRequest) {
         when (req.op) {
             is WriteOperation -> {
                 val objId = ObjectIdentifier(req.op.partition, req.op.key)
@@ -73,6 +69,14 @@ class EngageStorage(val address: Inet4Address, private val config: Config) : Gen
 
             }
         }
+    }
+
+    private fun onRemoteUpdateNot(update: UpdateNot) {
+
+    }
+
+    private fun onMetadataFlush(mf: MetadataFlush) {
+
     }
 
     private fun onDeactivate() {

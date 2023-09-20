@@ -1,12 +1,12 @@
 package ipc
 
-import proxy.utils.Operation
+import engage.Clock
 import pt.unl.fct.di.novasys.babel.generic.ProtoReply
 import pt.unl.fct.di.novasys.babel.generic.ProtoRequest
 import pt.unl.fct.di.novasys.network.data.Host
 import tree.utils.HybridTimestamp
 
-data class OpRequest(val proxyId: Long, val op: Operation) : ProtoRequest(ID) {
+data class OpRequest(val proxyId: Long, val op: proxy.utils.Operation) : ProtoRequest(ID) {
     companion object {
         const val ID: Short = 401
     }
@@ -30,3 +30,16 @@ class TreeReconfigurationClients(val hosts: List<Host>) : ProtoReply(ID) {
     }
 }
 
+//ENGAGE
+
+class EngageOpReply(val proxyId: Long, val clock: Clock?, val data: ByteArray?) : ProtoReply(ID) {
+    companion object {
+        const val ID: Short = 405
+    }
+}
+
+data class EngageOpRequest(val proxyId: Long, val op: engage.Operation) : ProtoRequest(ID) {
+    companion object {
+        const val ID: Short = 406
+    }
+}
