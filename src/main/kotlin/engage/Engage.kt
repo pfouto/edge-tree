@@ -66,8 +66,8 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
         peerProps.setProperty(TCPChannel.PORT_KEY, DEFAULT_PEER_PORT.toString())
         peerProps.setProperty(TCPChannel.TRIGGER_SENT_KEY, "false")
         peerProps.setProperty(TCPChannel.CONNECT_TIMEOUT_KEY, "5000")
-        peerProps.setProperty(TCPChannel.HEARTBEAT_INTERVAL_KEY, "5000")
-        peerProps.setProperty(TCPChannel.HEARTBEAT_TOLERANCE_KEY, "50000")
+        peerProps.setProperty(TCPChannel.HEARTBEAT_INTERVAL_KEY, "100000")
+        peerProps.setProperty(TCPChannel.HEARTBEAT_TOLERANCE_KEY, "150000")
         peerChannel = createChannel(TCPChannel.NAME, peerProps)
 
         neighbours = mutableMapOf()
@@ -267,7 +267,7 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
     }
 
     private fun onOutConnectionDown(event: OutConnectionDown, channelId: Int) {
-        logger.warn("Lost connection out to ${event.node}, reconnecting in $reconnectInterval")
+        logger.warn("Lost connection out to ${event.node}, ${event.cause} reconnecting in $reconnectInterval")
         setupTimer(ReconnectTimer(event.node), reconnectInterval)
         val info = neighbours[event.node] ?: throw AssertionError("Not in neighbours list: ${event.node}")
         info.connected = false
@@ -285,8 +285,7 @@ class Engage(val address: Inet4Address, props: Properties, private val config: C
     }
 
     private fun onInConnectionDown(event: InConnectionDown, channelId: Int) {
-        if (logger.isDebugEnabled)
-            logger.warn("Connection in down from ${event.node}")
+        logger.warn("Connection in down from ${event.node}, ${event.cause}")
     }
 
     fun finalLogs() {

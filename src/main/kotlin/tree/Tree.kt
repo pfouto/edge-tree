@@ -47,6 +47,8 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
     //Migrations
     private val parentMigrations = mutableListOf<MigrationRequest>() //Unlocks on downstream
 
+    private val logVisibility: Boolean = config.log_visibility
+
     override fun onActivate(notification: ActivateNotification) {
         logger.info("$notification received")
         if (state !is Inactive) {
@@ -208,7 +210,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
             }
         }
         sendReply(PersistenceUpdate(localPersistenceUpdates), Storage.ID)
-        logger.info("Pending DC persistence {} -> {}", oldSize, localPersistenceMapper.size)
+        logger.debug("Pending DC persistence {} -> {}", oldSize, localPersistenceMapper.size)
 
         //Handle migrations
         val iterator = parentMigrations.iterator()
@@ -357,6 +359,9 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         val localPersistenceId = persistenceIdCounter++
         val writeID = WriteID(ipInt, localPersistenceId, localPersistenceId)
         logger.debug("LW {}:{} {}", writeID.ip, writeID.counter, req.storageId)
+
+        if(logVisibility)
+            logger.info("GEN ${writeID.ip}_${writeID.counter} ${System.currentTimeMillis()}")
 
         if (state !is Datacenter)
             localPersistenceMapper[localPersistenceId] = req.storageId

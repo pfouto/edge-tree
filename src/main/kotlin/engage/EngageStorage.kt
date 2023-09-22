@@ -62,7 +62,7 @@ class EngageStorage(private val myAddress: Inet4Address, val config: Config) : G
     }
 
     override fun init(props: Properties) {
-
+        logger.info("Partitions are $partitions")
     }
 
     private fun onActivate(notification: ActivateNotification) {
@@ -82,7 +82,7 @@ class EngageStorage(private val myAddress: Inet4Address, val config: Config) : G
                 val currentClock = storageWrapper.getMetadata(objId)?.vc ?: Clock()
                 objectClock.merge(currentClock)
 
-                val vUp = storageIdCounter++
+                val vUp = ++storageIdCounter
 
                 val updateNot = UpdateNot(myAddress, vUp, req.op.partition, req.op.key, objectClock, req.op.value, null)
                 sendRequest(UpdateNotRequest(updateNot), Engage.ID)
@@ -115,7 +115,7 @@ class EngageStorage(private val myAddress: Inet4Address, val config: Config) : G
         storageWrapper.put(ObjectIdentifier(not.part, not.key), ObjectData(not.data, ObjectMetadata(not.vc, lww)))
 
         val now = System.currentTimeMillis() - zeroTime
-        if(amDc && config.count_ops && now > config.count_ops_start && !printed){
+        if(config.count_ops && now > config.count_ops_start && !printed){
             if(now > config.count_ops_end){
                 printed = true
                 logger.info("Total updates: $nUpdates from ${config.count_ops_start} to ${config.count_ops_end}")

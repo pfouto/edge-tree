@@ -56,6 +56,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
     private var printed: Boolean = false
     private var zeroTime: Long = 0
 
+    private val logVisibility: Boolean = config.log_visibility
+
 
     @Volatile
     private var localTime: HybridTimestamp = HybridTimestamp(getTimeMillis(), 0)
@@ -443,7 +445,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             localTime = localTime.mergeTimestamp(write.objectData.metadata.hlc)
         }
 
-        //TODO print id for log purposes (without persistence id)
+        if(logVisibility)
+            logger.info("VIS ${id.ip}_${id.counter} ${System.currentTimeMillis()}")
 
         //If we used a slower (replicated/to disk) storage, we could tag write operations with the client dependency
         //to know when we can safely execute operations in parallel. Here we do them serially, so we don't need to.
@@ -455,7 +458,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
 
     private fun countUpdates(){
         val now = System.currentTimeMillis() - zeroTime
-        if(amDc && config.count_ops && now > config.count_ops_start && !printed){
+        if(config.count_ops && now > config.count_ops_start && !printed){
             if(now > config.count_ops_end){
                 printed = true
                 logger.info("Total updates: $nUpdates from ${config.count_ops_start} to ${config.count_ops_end}")

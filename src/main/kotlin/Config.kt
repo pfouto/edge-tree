@@ -59,6 +59,8 @@ class Config(properties: Properties) {
         const val GC_TRESHOLD_DEFAULT = "300000" //5 min
         const val LOG_N_OBJECTS_KEY = "log_n_objects"
         const val LOG_N_OBJECTS_DEFAULT = "0"
+        const val LOG_VISIBILITY_KEY = "log_visibility"
+        const val LOG_VISIBILITY_DEFAULT = "false"
 
         // General
         const val HOSTNAME_KEY = "hostname"
@@ -121,6 +123,7 @@ class Config(properties: Properties) {
     val gc_period: Long
     val gc_threshold: Long
     val log_n_objects: Long
+    val log_visibility: Boolean
 
     val hostname: String
     val ip_addr: String
@@ -180,6 +183,7 @@ class Config(properties: Properties) {
         gc_period = properties.getProperty(GC_PERIOD_KEY, GC_PERIOD_DEFAULT).toLong()
         gc_threshold = properties.getProperty(GC_TRESHOLD_KEY, GC_TRESHOLD_DEFAULT).toLong()
         log_n_objects = properties.getProperty(LOG_N_OBJECTS_KEY, LOG_N_OBJECTS_DEFAULT).toLong()
+        log_visibility = properties.getProperty(LOG_VISIBILITY_KEY, LOG_VISIBILITY_DEFAULT).toBoolean()
 
         hostname = properties.getProperty(HOSTNAME_KEY)
         ip_addr = properties.getProperty(IP_ADDR_KEY)
