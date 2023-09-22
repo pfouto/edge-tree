@@ -42,6 +42,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
         Static,  //Parent wakes up a child node from a static tree
         Location //Child connects to best parent based on location after parent wakes up
     }
+
     enum class LocationSub(val orderingFunc: ( BroadcastState, Location) -> Double) {
         centralized ({ state, _ -> state.location.distanceToCenter()}),
         deep({state, myLoc ->
@@ -51,10 +52,20 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
                 0.75 * state.location.distanceToCenter() + state.location.distanceTo(myLoc)
         }),
         wide({state, myLoc ->
-            if (state.location.distanceToCenter() > myLoc.distanceToCenter())
-                (0.25 * state.location.distanceToCenter() + state.location.distanceTo(myLoc))*10.0
+
+            val levels = 3 //Plus DC
+            val maxDistToCenter = 300
+            val myDistToCenter = myLoc.distanceToCenter()
+            val otherDistToCenter = state.location.distanceToCenter()
+            val myLevel = kotlin.math.ceil((myDistToCenter / maxDistToCenter) * levels).toInt()
+            val otherLevel = kotlin.math.ceil((otherDistToCenter / maxDistToCenter) * levels).toInt()
+
+            if (otherDistToCenter > myDistToCenter)
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc))*1000.0
+            else if (otherLevel != myLevel-1)
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc))*100.0
             else
-                0.25 * state.location.distanceToCenter() + state.location.distanceTo(myLoc)
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc))
         })
     }
 
