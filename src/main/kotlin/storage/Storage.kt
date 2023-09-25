@@ -117,6 +117,10 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerTimerHandler(LogNObjectsTimer.ID) { _: LogNObjectsTimer, _ -> onLogNObjects() }
         Runtime.getRuntime().addShutdownHook(Thread {
             logger.info("${nOps.values.sumOf { it.local }}:${nOps.values.sumOf { it.remote }} ${nOps.toSortedMap()} $dataIndex")
+            if(config.log_n_objects > 0){
+                logger.info("Total objects: ${dataIndex.nObjects()}")
+                logger.info("All Objects: ${dataIndex.allObjects()}")
+            }
         })
 
     }

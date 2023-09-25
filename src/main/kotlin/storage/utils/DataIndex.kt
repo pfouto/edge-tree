@@ -96,6 +96,16 @@ open class DataIndex {
         }
     }
 
+    fun allObjects(): String {
+        return partitions.values.joinToString(separator = ",") {
+            when (it) {
+                is FullPartition -> ""
+                is PartialPartition -> it.keys.keys.joinToString(separator = ","){ key -> "${it.name}:$key" }
+                else -> ""
+            }
+        }
+    }
+
     abstract class Partition(val name: String)
 
     class FullPartition(name: String, var lastAccess: Long) : Partition(name) {
