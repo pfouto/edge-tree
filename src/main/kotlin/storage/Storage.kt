@@ -83,8 +83,14 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             return "$local:$remote"
         }
     }
+    data class SingleCount(var value: Int = 0) {
+        override fun toString(): String {
+            return "$value"
+        }
+    }
 
     private var nOps = mutableMapOf<String, Count>()
+    private var nOpsOrigin = mutableMapOf<Host, SingleCount>()
 
     init {
         subscribeNotification(DeactivateNotification.ID) { _: DeactivateNotification, _ -> onDeactivate() }
@@ -97,7 +103,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
             onRemoteWrite(
                 rep.writeId,
                 rep.write,
-                rep.downstream
+                rep.downstream,
+                rep.from
             )
         }
         registerReplyHandler(ObjReplicationRep.ID) { rep: ObjReplicationRep, _ -> onObjReplicationReply(rep) }
@@ -117,6 +124,8 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         registerTimerHandler(LogNObjectsTimer.ID) { _: LogNObjectsTimer, _ -> onLogNObjects() }
         Runtime.getRuntime().addShutdownHook(Thread {
             logger.info("${nOps.values.sumOf { it.local }}:${nOps.values.sumOf { it.remote }} ${nOps.toSortedMap()} $dataIndex")
+            logger.info("OpsOrigin ${nOpsOrigin.toSortedMap()}")
+
             if(config.log_n_objects > 0){
                 logger.info("Total objects: ${dataIndex.nObjects()}")
                 logger.info("All Objects: ${dataIndex.allObjects()}")
@@ -434,7 +443,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         }
     }
 
-    private fun onRemoteWrite(id: WriteID, write: RemoteWrite, downstream: Boolean) {
+    private fun onRemoteWrite(id: WriteID, write: RemoteWrite, downstream: Boolean, from: Host) {
         if (!dataIndex.containsObject(write.objectIdentifier) && !pendingObjects.containsKey(write.objectIdentifier)) {
             if (downstream) {
                 logger.debug("Ignoring downstream write for non existent object {}", write.objectIdentifier)
@@ -456,6 +465,7 @@ class Storage(val address: Inet4Address, private val config: Config) : GenericPr
         //to know when we can safely execute operations in parallel. Here we do them serially, so we don't need to.
         //We do not update the dataindex timestamp here, only on local writes/reads!
         nOps.computeIfAbsent(write.objectIdentifier.partition) { Count() }.remote++
+        nOpsOrigin.computeIfAbsent(from) { SingleCount() }.value++
         storageWrapper.put(write.objectIdentifier, write.objectData)
         countUpdates()
     }

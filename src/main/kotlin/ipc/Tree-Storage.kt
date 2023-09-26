@@ -157,7 +157,7 @@ data class FetchPartitionRep(val child: Host, val partition: String, val objects
 }
 
 // From Tree to Storage with a remote write to be applied locally
-data class PropagateWriteReply(val writeId: WriteID, val write: RemoteWrite, val downstream: Boolean) : ProtoReply(ID) {
+data class PropagateWriteReply(val writeId: WriteID, val write: RemoteWrite, val downstream: Boolean, val from: Host) : ProtoReply(ID) {
     companion object {
         const val ID: Short = 209
     }

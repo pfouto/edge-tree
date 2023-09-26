@@ -323,7 +323,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
         msg.writes.forEach {
             logger.debug("RW {}:{}", it.first.ip, it.first.counter )
             logger.debug("Received downstream write for {}", it.second.objectIdentifier)
-            sendReply(PropagateWriteReply(it.first, it.second, true), Storage.ID)
+            sendReply(PropagateWriteReply(it.first, it.second, true, from), Storage.ID)
         }
         propagateWritesToChildren(msg.writes)
     }
@@ -340,7 +340,7 @@ class Tree(address: Inet4Address, config: Config, private val timestampReader: S
 
             logger.debug("RW {}:{}", id.ip, id.counter )
             logger.debug("Received upstream write for {} from {}", write.objectIdentifier, child)
-            sendReply(PropagateWriteReply(newId, write, false), Storage.ID)
+            sendReply(PropagateWriteReply(newId, write, false, child), Storage.ID)
 
             childState.highestPersistenceIdSeen = id.persistenceId
             if (state !is Datacenter) {
