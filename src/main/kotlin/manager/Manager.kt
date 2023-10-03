@@ -31,6 +31,10 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
         private const val PORT = 20100
 
         private val logger = LogManager.getLogger()
+
+        val maxDistToCenter = 300
+        val wideLevelRanges = arrayOf(1, 75, 180, 100000)
+        val deepLevelRanges = arrayOf(1, 20,45,70,100,130,165,200,235,270, 100000)
     }
 
     enum class State {
@@ -43,31 +47,59 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
         Location //Child connects to best parent based on location after parent wakes up
     }
 
-    enum class LocationSub(val orderingFunc: ( BroadcastState, Location) -> Double) {
-        centralized ({ state, _ -> state.location.distanceToCenter()}),
-        deep({state, myLoc ->
+
+    enum class LocationSub(val orderingFunc: (BroadcastState, Location) -> Double) {
+        centralized({ state, _ -> state.location.distanceToCenter() }),
+
+        /*deep({ state, myLoc ->
             if (state.location.distanceToCenter() > myLoc.distanceToCenter())
-                (0.75 * state.location.distanceToCenter() + state.location.distanceTo(myLoc))*10.0
+                (0.75 * state.location.distanceToCenter() + state.location.distanceTo(myLoc)) * 10.0
             else
                 0.75 * state.location.distanceToCenter() + state.location.distanceTo(myLoc)
-        }),
-        wide({state, myLoc ->
-
-            val levels = 3 //Plus DC
-            val maxDistToCenter = 300
+        }),*/
+        deep({ state, myLoc ->
             val myDistToCenter = myLoc.distanceToCenter()
             val otherDistToCenter = state.location.distanceToCenter()
-            val myLevel = kotlin.math.ceil((myDistToCenter / maxDistToCenter) * levels).toInt()
-            val otherLevel = kotlin.math.ceil((otherDistToCenter / maxDistToCenter) * levels).toInt()
+
+            val myLevel = deepLevelRanges.indexOfFirst { myDistToCenter < it }
+            val otherLevel = deepLevelRanges.indexOfFirst { otherDistToCenter < it }
+
+            val myAngle = myLoc.angle()
+            val otherAngle = state.location.angle()
 
             if (otherDistToCenter > myDistToCenter)
-                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc))*1000.0
-            else if (otherLevel != myLevel-1)
-                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc))*100.0
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * 1000.0
+            else if (otherLevel >= myLevel)
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * 500.0
+            else if (Math.abs(myAngle - otherAngle) > 60)
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * 100.0
             else
-                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc))
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * (myLevel-otherLevel)
+        }),
+        wide({ state, myLoc ->
+
+            val myDistToCenter = myLoc.distanceToCenter()
+            val otherDistToCenter = state.location.distanceToCenter()
+
+            val myLevel = wideLevelRanges.indexOfFirst { myDistToCenter < it }
+            val otherLevel = wideLevelRanges.indexOfFirst { otherDistToCenter < it }
+
+            val myAngle = myLoc.angle()
+            val otherAngle = state.location.angle()
+
+            if (otherDistToCenter > myDistToCenter)
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * 1000.0
+            else if (otherLevel >= myLevel)
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * 500.0
+            else if (Math.abs(myAngle - otherAngle) > 80)
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * 100.0
+            else
+                (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * (myLevel-otherLevel)
         })
     }
+
+
+
 
     private var state: State = State.INACTIVE
         private set(value) {
@@ -216,10 +248,10 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
             }
 
             TreeBuilder.Location -> {
-                if(state == State.ACTIVE)
+                if (state == State.ACTIVE)
                     return
 
-                if(membership.size != config.tree_builder_nnodes - 1) {
+                if (membership.size != config.tree_builder_nnodes - 1) {
                     logger.info("Waiting for all nodes to be in membership: ${membership.size}/${config.tree_builder_nnodes - 1}")
                     logger.debug("{}", membership.keys.map { it.hostAddress })
                     return
@@ -227,7 +259,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
                 val best =
                     membership.filterValues { it.first.location.distanceToCenter() < myLocation.distanceToCenter() }
                         .toList().minByOrNull { (_, value) -> locationSub.orderingFunc(value.first, myLocation) }
-                if(best != null){
+                if (best != null) {
                     if (best.second.first.state == State.ACTIVE) {
                         logger.info("Waking myself. Connecting to ${best.first}, membership size ${membership.size}")
                         triggerNotification(ActivateNotification(best.first))
@@ -298,6 +330,10 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
 
         fun distanceTo(other: Location): Double {
             return sqrt((x - other.x).pow(2) + (y - other.y).pow(2))
+        }
+
+        fun angle(): Double {
+            return (Math.toDegrees(Math.atan2(x, -y)) + 360.0) % 360.0
         }
     }
 }
