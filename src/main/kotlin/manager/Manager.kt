@@ -34,6 +34,8 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
 
         val maxDistToCenter = 300
         val wideLevelRanges = arrayOf(1, 75, 180, 100000)
+        val wide20LevelRanges = arrayOf(1, 130, 100000)
+
         val deepLevelRanges = arrayOf(1, 20,45,70,100,130,165,200,235,270, 100000)
     }
 
@@ -48,16 +50,16 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
     }
 
 
-    enum class LocationSub(val orderingFunc: (BroadcastState, Location) -> Double) {
-        centralized({ state, _ -> state.location.distanceToCenter() }),
+    enum class LocationSub(val orderingFunc: (BroadcastState, Location, Int) -> Double) {
+        centralized({ state, _, _-> state.location.distanceToCenter() }),
 
-        /*deep({ state, myLoc ->
+        deep({ state, myLoc, _ ->
             if (state.location.distanceToCenter() > myLoc.distanceToCenter())
                 (0.75 * state.location.distanceToCenter() + state.location.distanceTo(myLoc)) * 10.0
             else
                 0.75 * state.location.distanceToCenter() + state.location.distanceTo(myLoc)
-        }),*/
-        deep({ state, myLoc ->
+        }),
+        /*deep({ state, myLoc ->
             val myDistToCenter = myLoc.distanceToCenter()
             val otherDistToCenter = state.location.distanceToCenter()
 
@@ -75,14 +77,14 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
                 (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * 100.0
             else
                 (0.75 * otherDistToCenter + state.location.distanceTo(myLoc)) * (myLevel-otherLevel)
-        }),
-        wide({ state, myLoc ->
+        }),*/
+        wide({ state, myLoc, size ->
 
             val myDistToCenter = myLoc.distanceToCenter()
             val otherDistToCenter = state.location.distanceToCenter()
 
-            val myLevel = wideLevelRanges.indexOfFirst { myDistToCenter < it }
-            val otherLevel = wideLevelRanges.indexOfFirst { otherDistToCenter < it }
+            val myLevel = if(size > 100) wideLevelRanges.indexOfFirst { myDistToCenter < it } else wide20LevelRanges.indexOfFirst { myDistToCenter < it }
+            val otherLevel = if(size > 100) wideLevelRanges.indexOfFirst { otherDistToCenter < it } else wide20LevelRanges.indexOfFirst { otherDistToCenter < it }
 
             val myAngle = myLoc.angle()
             val otherAngle = state.location.angle()
@@ -258,7 +260,7 @@ class Manager(private val selfAddress: Inet4Address, private val config: Config)
                 }
                 val best =
                     membership.filterValues { it.first.location.distanceToCenter() < myLocation.distanceToCenter() }
-                        .toList().minByOrNull { (_, value) -> locationSub.orderingFunc(value.first, myLocation) }
+                        .toList().minByOrNull { (_, value) -> locationSub.orderingFunc(value.first, myLocation, membership.size) }
                 if (best != null) {
                     if (best.second.first.state == State.ACTIVE) {
                         logger.info("Waking myself. Connecting to ${best.first}, membership size ${membership.size}")
